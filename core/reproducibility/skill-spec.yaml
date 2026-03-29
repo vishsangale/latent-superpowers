@@ -1,0 +1,63 @@
+name: reproducibility
+title: Reproducibility
+summary: Capture local run context, verify current state against a saved context, reconstruct tracked runs, and diff reproducibility snapshots.
+description: Use when the task involves freezing local experiment context, checking whether a repo or environment drifted, reconstructing a tracked run from MLflow or W&B data, or diffing reproducibility snapshots.
+codex:
+  display_name: Reproducibility
+  short_description: Capture, verify, and diff local reproducibility context
+  default_prompt: Use $reproducibility to capture the current experiment context, verify drift, and reconstruct tracked runs for this project.
+use_when:
+  - The user wants an exact record of repo state, Python environment, and key env vars before or after a run.
+  - The task is to verify whether the current machine still matches a prior context capture.
+  - The task is to reconstruct local MLflow or W&B runs into a concise reproducibility report.
+avoid_when:
+  - Raw experiment execution that belongs to experiment-runner.
+  - Config composition debugging that belongs to Hydra.
+  - Hosted tracking dashboards that belong to MLflow or W&B directly.
+principles:
+  - Capture concrete facts, not vague prose, about code state, runtime, and environment variables.
+  - Treat dirty git state and dependency drift as first-class reproducibility risks.
+  - Reconstruct tracked runs from local artifacts and metadata before asking the user to remember commands.
+  - Make diffs explicit so drift is attributable instead of anecdotal.
+safety_rules:
+  - Prefer read-only inspection of repos, env vars, and tracking data.
+  - Do not rewrite git history or mutate tracking stores.
+  - Only include env keys explicitly requested by the user or the command flags.
+expected_outputs:
+  - a JSON context snapshot with repo, git, Python, and selected env data
+  - a drift report showing matches and mismatches against a saved context
+  - a reconstructed local run report with metrics, params, tags, and artifact references
+  - a structured diff between two saved reproducibility captures
+commands:
+  - name: capture_run_context.py
+    summary: Capture repo, git, Python, and selected environment details into a JSON snapshot.
+  - name: verify_repro_context.py
+    summary: Compare the current repo and runtime against a saved reproducibility context.
+  - name: reconstruct_local_run.py
+    summary: Reconstruct a local MLflow or W&B run into a concise reproducibility report.
+  - name: diff_run_contexts.py
+    summary: Diff two saved reproducibility contexts and surface the fields that changed.
+references:
+  - path: references/workflow.md
+    summary: Capture, verify, reconstruct, and diff flow for local experiments.
+  - path: references/drift-checks.md
+    summary: What counts as code, environment, and tracking drift.
+workflows:
+  - name: Freeze local state before a run
+    helpers:
+      - capture_run_context.py
+      - verify_repro_context.py
+    steps:
+      - Capture the current repo, git, Python, and selected env state.
+      - Save the context next to the planned run or manifest.
+      - Re-run verification later to detect drift before comparing results.
+  - name: Recover how a tracked run was produced
+    helpers:
+      - reconstruct_local_run.py
+      - diff_run_contexts.py
+    steps:
+      - Resolve the run from local MLflow or W&B data.
+      - Extract params, metrics, tags, and artifact references.
+      - Compare that recovered view against the current local context or another saved snapshot.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared reproducibility core. Prefer these helpers over ad hoc shell notes so local experiment provenance stays machine-checkable.

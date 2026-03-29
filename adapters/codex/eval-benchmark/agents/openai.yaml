@@ -1,0 +1,4 @@
+interface:
+  display_name: "Eval Benchmark"
+  short_description: "Rank and compare local evaluation runs"
+  default_prompt: "Use $eval-benchmark to rank local runs, compare a candidate to a baseline, and inspect evaluation histories for this project."

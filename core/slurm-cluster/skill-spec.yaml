@@ -1,0 +1,67 @@
+name: slurm-cluster
+title: Slurm Cluster
+summary: Inspect repo entrypoints for cluster readiness, generate sbatch scripts, convert local run manifests into job arrays, and summarize Slurm logs and sacct output.
+description: Use when the task involves planning Slurm execution for a repo, generating sbatch scripts or job arrays, or diagnosing Slurm job output and accounting data.
+codex:
+  display_name: Slurm Cluster
+  short_description: Generate Slurm submission artifacts and diagnose cluster output
+  default_prompt: Use $slurm-cluster to inspect this repo for cluster readiness, generate sbatch scripts, plan a job array from a local manifest, and summarize Slurm logs.
+use_when:
+  - The user wants to launch a repo’s experiments on Slurm.
+  - The task is to turn a local command or experiment-runner manifest into sbatch or array artifacts.
+  - The task is to parse Slurm logs or sacct output and explain failures.
+avoid_when:
+  - Purely local execution that belongs to experiment-runner.
+  - Detailed Hydra config questions that belong to Hydra.
+  - Hosted tracking dashboards that belong to MLflow or W&B.
+principles:
+  - Default to dry-run planning and script generation before any cluster submission.
+  - Reuse the repo’s real entrypoints and manifests instead of inventing new shell wrappers.
+  - Make resources, environment setup, and log paths explicit in generated scripts.
+  - Turn scheduler output into concrete failure categories instead of raw text dumps.
+safety_rules:
+  - Do not submit jobs automatically unless the user explicitly asks.
+  - Preserve generated scripts and array maps so cluster work can be audited later.
+  - Surface missing Slurm commands or missing cluster access as actionable blockers.
+expected_outputs:
+  - repo-aware cluster entrypoints and existing Slurm hints
+  - generated sbatch or job-array scripts with explicit resources and working directory
+  - parsed sacct summaries with status counts and failed jobs
+  - concise failure diagnoses from Slurm stdout or stderr logs
+commands:
+  - name: inspect_slurm_project.py
+    summary: Inspect a repo for Hydra entrypoints, existing Slurm scripts, and cluster-ready execution hints.
+  - name: generate_sbatch.py
+    summary: Generate a single-job sbatch script from a repo-aware command or auto-detected Hydra entrypoint.
+  - name: plan_job_array.py
+    summary: Convert an experiment-runner manifest into a Slurm array script and array task map.
+  - name: summarize_slurm_log.py
+    summary: Parse Slurm logs for common failure signatures like OOM, timeouts, and module errors.
+  - name: parse_sacct.py
+    summary: Parse sacct output into status counts and failed-job summaries.
+references:
+  - path: references/workflow.md
+    summary: Repo inspection, sbatch generation, array planning, and log triage flow.
+  - path: references/failure-patterns.md
+    summary: Common Slurm failure signatures and how the parser classifies them.
+workflows:
+  - name: Prepare a repo for Slurm
+    helpers:
+      - inspect_slurm_project.py
+      - generate_sbatch.py
+    steps:
+      - Inspect the repo for Hydra entrypoints and existing Slurm patterns.
+      - Resolve a concrete base command and working directory.
+      - Generate an sbatch script with explicit resources, environment setup, and logs.
+      - Review the script before cluster submission.
+  - name: Turn a local sweep into a job array
+    helpers:
+      - plan_job_array.py
+      - summarize_slurm_log.py
+      - parse_sacct.py
+    steps:
+      - Start from a saved experiment-runner manifest.
+      - Generate an array script plus a machine-readable task map.
+      - Use the generated logs and sacct summaries to diagnose failures at scale.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared slurm-cluster core. Prefer the generated scripts and parsers over ad hoc shell snippets so cluster execution stays explicit and debuggable.

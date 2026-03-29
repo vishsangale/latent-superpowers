@@ -1,0 +1,4 @@
+interface:
+  display_name: "Slurm Cluster"
+  short_description: "Generate Slurm submission artifacts and diagnose cluster output"
+  default_prompt: "Use $slurm-cluster to inspect this repo for cluster readiness, generate sbatch scripts, plan a job array from a local manifest, and summarize Slurm logs."

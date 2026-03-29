@@ -1,0 +1,65 @@
+name: dataset-pipeline
+title: Dataset Pipeline
+summary: Inspect dataset projects, profile local data files, detect split leakage, and snapshot dataset state for reproducible research.
+description: Use when the task involves onboarding dataset code in a repo, profiling local datasets, validating train/val/test splits, surfacing missing data dependencies, or snapshotting dataset state for reproducibility.
+codex:
+  display_name: Dataset Pipeline
+  short_description: Inspect data pipelines, profile datasets, and validate splits
+  default_prompt: Use $dataset-pipeline to inspect this repo’s data pipeline, profile local datasets, detect split leakage, and snapshot dataset state.
+use_when:
+  - The repo has data-prep scripts, dataset modules, or local dataset files that need inspection.
+  - The task is to validate train/val/test splits, find leakage, or profile schemas and null rates.
+  - The user wants a reproducible snapshot of local dataset files and sizes.
+avoid_when:
+  - Experiment execution work that belongs to experiment-runner.
+  - Benchmarking trained runs that belongs to eval-benchmark.
+  - Cluster scheduling that belongs to Slurm.
+principles:
+  - Start by understanding the repo’s data entrypoints and import dependencies before mutating anything.
+  - Prefer deterministic local file inspection over assumptions about schema or split logic.
+  - Treat leakage, missing dependencies, and missing files as first-class blockers.
+  - Produce compact manifests that can be checked into notes or artifacts.
+safety_rules:
+  - Prefer read-only inspection of repos and datasets.
+  - Do not rewrite dataset files or inferred split assignments.
+  - Call out unsupported file formats or missing parsing dependencies explicitly.
+expected_outputs:
+  - repo-aware dataset entrypoints, dataset names, and dependency gaps
+  - per-file schema or sample summaries with row counts and null counts
+  - explicit split overlap or leakage findings
+  - a reproducible dataset snapshot manifest with sizes and checksums
+commands:
+  - name: inspect_dataset_project.py
+    summary: Inspect a repo for dataset scripts, pipeline imports, dataset choices, and missing dependencies.
+  - name: profile_dataset.py
+    summary: Profile local dataset files or directories across CSV, JSONL, and Parquet when supported.
+  - name: validate_splits.py
+    summary: Detect overlap or leakage across train, validation, and test files.
+  - name: snapshot_dataset.py
+    summary: Write a local snapshot manifest with relative paths, sizes, and SHA256 digests.
+references:
+  - path: references/workflow.md
+    summary: Repo inspection, local profiling, split validation, and dataset snapshot flow.
+  - path: references/split-validation.md
+    summary: ID-key heuristics, row hashing, and leakage interpretation rules.
+workflows:
+  - name: Onboard a new dataset repo
+    helpers:
+      - inspect_dataset_project.py
+      - profile_dataset.py
+    steps:
+      - Inspect dataset entrypoints, pipeline modules, and dependency gaps.
+      - Identify the concrete dataset files or roots that exist locally.
+      - Profile representative files before making assumptions about schema or split logic.
+      - Surface blockers such as missing dependencies, missing modules, or unsupported formats.
+  - name: Validate a local split and freeze its state
+    helpers:
+      - validate_splits.py
+      - snapshot_dataset.py
+    steps:
+      - Load the explicit train, validation, and test files.
+      - Resolve ID columns or fall back to row hashing when needed.
+      - Report overlap counts and leakage risk clearly.
+      - Write a snapshot manifest so the checked dataset state can be referenced later.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared dataset-pipeline core. Prefer the shared inspection and validation helpers over ad hoc one-off dataset scripts so pipeline onboarding stays explicit and reproducible.

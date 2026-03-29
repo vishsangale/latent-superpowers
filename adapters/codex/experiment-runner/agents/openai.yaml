@@ -1,0 +1,4 @@
+interface:
+  display_name: "Experiment Runner"
+  short_description: "Plan and execute local experiment matrices with manifests"
+  default_prompt: "Use $experiment-runner to plan, launch, resume, and summarize local experiment runs for this repo."

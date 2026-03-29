@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reproducibility"
+  short_description: "Capture, verify, and diff local reproducibility context"
+  default_prompt: "Use $reproducibility to capture the current experiment context, verify drift, and reconstruct tracked runs for this project."

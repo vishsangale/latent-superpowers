@@ -1,0 +1,65 @@
+name: experiment-runner
+title: Experiment Runner
+summary: Plan, launch, resume, and summarize local experiment matrices with explicit manifests and seeded sweep discipline.
+description: Use when the task involves planning multiple experiment commands, running seeded sweeps, resuming failed local runs, or summarizing which commands succeeded, failed, or need to be rerun.
+codex:
+  display_name: Experiment Runner
+  short_description: Plan and execute local experiment matrices with manifests
+  default_prompt: Use $experiment-runner to plan, launch, resume, and summarize local experiment runs for this repo.
+use_when:
+  - The user wants to run a local matrix of commands, seeds, or Hydra overrides.
+  - The task is to generate an explicit run manifest before launching anything.
+  - The task is to resume failed runs or summarize what already ran.
+avoid_when:
+  - Cluster scheduling work that belongs to the Slurm skill.
+  - Fine-grained config provenance questions that belong to Hydra.
+  - Hosted tracking inspection that belongs to W&B or MLflow directly.
+principles:
+  - Make the run matrix explicit before launching commands.
+  - Treat seeds as first-class experiment dimensions.
+  - Persist manifests and per-run stdout or stderr so runs can be resumed instead of reinvented.
+  - Separate command planning from result interpretation.
+safety_rules:
+  - Default to planning and dry-run output before executing commands.
+  - Never hide failed commands or silently drop stderr.
+  - Keep execution local and sequential unless the user explicitly wants concurrency.
+expected_outputs:
+  - the resolved base command and working directory
+  - the explicit matrix dimensions and run count
+  - a manifest path plus per-run log locations
+  - a concise success or failure summary and rerun guidance
+commands:
+  - name: plan_runs.py
+    summary: Build an explicit local run matrix from a base command, override factors, and seeds.
+  - name: launch_runs.py
+    summary: Execute a planned run matrix locally and write manifest-backed logs and result records.
+  - name: resume_runs.py
+    summary: Resume failed or incomplete runs from an existing manifest.
+  - name: summarize_manifest.py
+    summary: Summarize manifest results, durations, and the best extracted metric from local logs.
+references:
+  - path: references/workflow.md
+    summary: Planning, launch, resume, and analysis flow for local experiment batches.
+  - path: references/manifest-layout.md
+    summary: Manifest fields, result records, and log file conventions.
+workflows:
+  - name: Plan a seeded local sweep
+    helpers:
+      - plan_runs.py
+      - launch_runs.py
+    steps:
+      - Resolve the repo, base command, and working directory.
+      - Expand the explicit factor grid and seed list into a manifest.
+      - Review the run count, labels, and overrides before launching.
+      - Launch locally and preserve stdout, stderr, and result metadata per run.
+  - name: Recover from partial failures
+    helpers:
+      - resume_runs.py
+      - summarize_manifest.py
+    steps:
+      - Read the existing manifest and result records.
+      - Identify failed or missing runs without rebuilding the matrix.
+      - Rerun only the missing work.
+      - Summarize successes, failures, durations, and extracted metrics.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared experiment-runner core. Prefer the manifest-driven CLI helpers over ad hoc shell loops so local research runs remain reproducible and resumable.

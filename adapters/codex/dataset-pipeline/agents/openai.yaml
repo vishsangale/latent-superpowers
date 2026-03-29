@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dataset Pipeline"
+  short_description: "Inspect data pipelines, profile datasets, and validate splits"
+  default_prompt: "Use $dataset-pipeline to inspect this repo’s data pipeline, profile local datasets, detect split leakage, and snapshot dataset state."
