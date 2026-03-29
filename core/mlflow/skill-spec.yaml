@@ -18,7 +18,7 @@ principles:
   - Resolve the tracking URI before inspecting runs.
   - Make the definition of best run explicit.
   - Prefer read-only inspection and summaries first.
-  - Treat file-backed tracking stores and remote tracking servers as distinct debugging modes.
+  - Treat local SQLite backends, file-backed stores, and remote tracking servers as distinct debugging modes.
 safety_rules:
   - Prefer read-only inspection and summarization.
   - Do not mutate runs, artifacts, or registry state unless the user explicitly requests it.
@@ -30,7 +30,7 @@ expected_outputs:
   - a compact run summary, artifact summary, or context summary
 commands:
   - name: check_mlflow_context.py
-    summary: Resolve the active tracking URI and summarize the local tracking-store context.
+    summary: Resolve the active tracking URI and summarize the local tracking context for file, SQLite, or remote modes.
   - name: search_runs.py
     summary: List MLflow runs with experiment, metric, param, and tag context.
   - name: compare_runs.py
@@ -41,7 +41,7 @@ references:
   - path: references/workflow.md
     summary: Tracking URI resolution, run gathering, and comparison flow.
   - path: references/tracking-uri.md
-    summary: Distinguish file-backed tracking stores from remote MLflow servers.
+    summary: Distinguish local SQLite, file-backed tracking stores, and remote MLflow servers.
   - path: references/artifacts.md
     summary: Artifact layout expectations and local inspection caveats.
 workflows:
@@ -49,8 +49,8 @@ workflows:
     helpers:
       - check_mlflow_context.py
     steps:
-      - Resolve the tracking URI from CLI input, environment, or a local mlruns directory.
-      - Confirm whether the store is file-backed or remote.
+      - Resolve the tracking URI from CLI input, environment, a local SQLite database, or a local mlruns directory.
+      - Confirm whether the store is SQLite-backed, file-backed, or remote.
       - Summarize available experiments before selecting one for deeper analysis.
   - name: Compare runs
     helpers:

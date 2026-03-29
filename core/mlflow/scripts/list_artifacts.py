@@ -8,7 +8,15 @@ import json
 import os
 from pathlib import Path
 
-from mlflow_store_utils import artifact_path_for_run, discover_runs, normalize_tracking_uri
+from mlflow_store_utils import (
+    artifact_path_for_run,
+    discover_experiments,
+    discover_experiments_via_client,
+    discover_runs,
+    discover_runs_via_client,
+    list_artifacts_via_client,
+    normalize_tracking_uri,
+)
 
 
 def main() -> int:
@@ -18,21 +26,31 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     args = parser.parse_args()
 
-    _, store_root, _ = normalize_tracking_uri(args.tracking_uri or os.getenv("MLFLOW_TRACKING_URI"))
-    runs = discover_runs(store_root)
-    run = next((run for run in runs if run.run_id == args.run_id), None)
-    artifact_root = artifact_path_for_run(run) if run else None
+    resolved_uri, store_root, mode = normalize_tracking_uri(
+        args.tracking_uri or os.getenv("MLFLOW_TRACKING_URI")
+    )
 
     artifact_files: list[str] = []
-    if artifact_root and artifact_root.exists():
-        artifact_files = [
-            str(path.relative_to(artifact_root))
-            for path in sorted(artifact_root.rglob("*"))
-            if path.is_file()
-        ]
+    artifact_root: Path | None = None
+    if mode == "file":
+        runs = discover_runs(store_root)
+        run = next((run for run in runs if run.run_id == args.run_id), None)
+        artifact_root = artifact_path_for_run(run) if run else None
+        if artifact_root and artifact_root.exists():
+            artifact_files = [
+                str(path.relative_to(artifact_root))
+                for path in sorted(artifact_root.rglob("*"))
+                if path.is_file()
+            ]
+    else:
+        experiments = discover_experiments_via_client(resolved_uri)
+        runs = discover_runs_via_client(resolved_uri, experiments=experiments, limit=1000)
+        run = next((run for run in runs if run.run_id == args.run_id), None)
+        artifact_files = list_artifacts_via_client(resolved_uri, args.run_id) if run else []
 
     payload = {
         "run_id": args.run_id,
+        "tracking_uri": resolved_uri,
         "artifact_root": str(artifact_root) if artifact_root else None,
         "artifact_count": len(artifact_files),
         "artifacts": artifact_files,

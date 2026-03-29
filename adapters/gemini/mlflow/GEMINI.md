@@ -25,7 +25,7 @@ This adapter is a thin wrapper over the shared MLflow core. Prefer invoking the 
 - Resolve the tracking URI before inspecting runs.
 - Make the definition of best run explicit.
 - Prefer read-only inspection and summaries first.
-- Treat file-backed tracking stores and remote tracking servers as distinct debugging modes.
+- Treat local SQLite backends, file-backed stores, and remote tracking servers as distinct debugging modes.
 
 ## Safety Rules
 
@@ -41,7 +41,7 @@ This adapter is a thin wrapper over the shared MLflow core. Prefer invoking the 
 
 ## Command Surface
 
-- `python ../../../core/mlflow/scripts/check_mlflow_context.py`: Resolve the active tracking URI and summarize the local tracking-store context.
+- `python ../../../core/mlflow/scripts/check_mlflow_context.py`: Resolve the active tracking URI and summarize the local tracking context for file, SQLite, or remote modes.
 - `python ../../../core/mlflow/scripts/search_runs.py`: List MLflow runs with experiment, metric, param, and tag context.
 - `python ../../../core/mlflow/scripts/compare_runs.py`: Compare MLflow runs under explicit metrics and filters.
 - `python ../../../core/mlflow/scripts/list_artifacts.py`: List local artifacts for a specific MLflow run.
@@ -50,8 +50,8 @@ This adapter is a thin wrapper over the shared MLflow core. Prefer invoking the 
 
 ### Inspect context
 
-1. Resolve the tracking URI from CLI input, environment, or a local mlruns directory.
-2. Confirm whether the store is file-backed or remote.
+1. Resolve the tracking URI from CLI input, environment, a local SQLite database, or a local mlruns directory.
+2. Confirm whether the store is SQLite-backed, file-backed, or remote.
 3. Summarize available experiments before selecting one for deeper analysis.
 
 Helpers: `check_mlflow_context.py`
@@ -77,7 +77,7 @@ Helpers: `list_artifacts.py`
 ## References
 
 - `../../../core/mlflow/references/workflow.md`: Tracking URI resolution, run gathering, and comparison flow.
-- `../../../core/mlflow/references/tracking-uri.md`: Distinguish file-backed tracking stores from remote MLflow servers.
+- `../../../core/mlflow/references/tracking-uri.md`: Distinguish local SQLite, file-backed tracking stores, and remote MLflow servers.
 - `../../../core/mlflow/references/artifacts.md`: Artifact layout expectations and local inspection caveats.
 
 ## Expected Outputs

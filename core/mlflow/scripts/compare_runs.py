@@ -8,7 +8,15 @@ import json
 import os
 from typing import Any
 
-from mlflow_store_utils import discover_experiments, discover_runs, filter_runs, normalize_tracking_uri, run_to_dict
+from mlflow_store_utils import (
+    discover_experiments,
+    discover_experiments_via_client,
+    discover_runs,
+    discover_runs_via_client,
+    filter_runs,
+    normalize_tracking_uri,
+    run_to_dict,
+)
 
 
 def _sort_key(metric_value: float | None, direction: str) -> tuple[int, float]:
@@ -39,16 +47,29 @@ def main() -> int:
     parser.add_argument("runs", nargs="*", help="Optional run IDs to keep")
     args = parser.parse_args()
 
-    _, store_root, _ = normalize_tracking_uri(args.tracking_uri or os.getenv("MLFLOW_TRACKING_URI"))
-    experiments = discover_experiments(store_root)
-    runs = discover_runs(store_root)
-    filtered = filter_runs(
-        runs,
-        experiment_id=args.experiment_id,
-        experiment_name=args.experiment_name,
-        experiments=experiments,
-        run_ids=set(args.runs) if args.runs else None,
+    resolved_uri, store_root, mode = normalize_tracking_uri(
+        args.tracking_uri or os.getenv("MLFLOW_TRACKING_URI")
     )
+    if mode == "file":
+        experiments = discover_experiments(store_root)
+        runs = discover_runs(store_root)
+        filtered = filter_runs(
+            runs,
+            experiment_id=args.experiment_id,
+            experiment_name=args.experiment_name,
+            experiments=experiments,
+            run_ids=set(args.runs) if args.runs else None,
+        )
+    else:
+        experiments = discover_experiments_via_client(resolved_uri)
+        filtered = discover_runs_via_client(
+            resolved_uri,
+            experiment_id=args.experiment_id,
+            experiment_name=args.experiment_name,
+            experiments=experiments,
+            run_ids=set(args.runs) if args.runs else None,
+            limit=max(args.limit, 500),
+        )
 
     payload_runs = [run_to_dict(run) for run in filtered]
     payload_runs.sort(
@@ -58,6 +79,7 @@ def main() -> int:
         )
     )
     payload = {
+        "tracking_uri": resolved_uri,
         "metric": args.metric,
         "direction": args.direction,
         "run_count": len(filtered),

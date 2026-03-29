@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 
-from mlflow_store_utils import discover_experiments, normalize_tracking_uri
+from mlflow_store_utils import discover_experiments, discover_experiments_via_client, normalize_tracking_uri
 
 
 def main() -> int:
@@ -19,7 +19,10 @@ def main() -> int:
     resolved_uri, store_root, mode = normalize_tracking_uri(
         args.tracking_uri or os.getenv("MLFLOW_TRACKING_URI")
     )
-    experiments = discover_experiments(store_root)
+    if mode == "file":
+        experiments = discover_experiments(store_root)
+    else:
+        experiments = discover_experiments_via_client(resolved_uri)
 
     result = {
         "tracking_uri": resolved_uri,

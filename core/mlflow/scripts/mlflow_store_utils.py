@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Helpers for inspecting local MLflow file-backed tracking stores."""
+"""Helpers for inspecting MLflow tracking stores."""
 
 from __future__ import annotations
 
@@ -30,6 +30,16 @@ class Run:
     metrics: dict[str, float]
     tags: dict[str, str]
     path: str
+
+
+def _load_mlflow_client(tracking_uri: str):
+    try:
+        from mlflow.tracking import MlflowClient
+    except ImportError as exc:
+        raise RuntimeError(
+            "MLflow client support requires the 'mlflow' package in the active Python environment."
+        ) from exc
+    return MlflowClient(tracking_uri=tracking_uri)
 
 
 def _coerce_scalar(raw: str) -> Any:
@@ -68,14 +78,19 @@ def parse_simple_yaml(path: Path) -> dict[str, Any]:
 def normalize_tracking_uri(tracking_uri: str | None = None) -> tuple[str, Path | None, str]:
     raw = tracking_uri or ""
     if not raw:
+        default_sqlite = Path.cwd() / "mlflow.db"
+        if default_sqlite.exists():
+            return (f"sqlite:///{default_sqlite.resolve()}", default_sqlite.resolve(), "sqlite")
         default = Path.cwd() / "mlruns"
-        if default.exists():
-            return (str(default.resolve()), default.resolve(), "file")
         return (str(default.resolve()), default.resolve(), "file")
 
     if raw.startswith("file://"):
         parsed = Path(urlparse(raw).path).resolve()
         return (raw, parsed, "file")
+
+    if raw.startswith("sqlite:///"):
+        parsed = Path(raw.removeprefix("sqlite:///")).expanduser().resolve()
+        return (raw, parsed, "sqlite")
 
     if raw.startswith("http://") or raw.startswith("https://"):
         scheme = "http" if raw.startswith("http://") else "https"
@@ -103,6 +118,22 @@ def discover_experiments(store_root: Path | None) -> list[Experiment]:
                 artifact_location=meta.get("artifact_location"),
                 lifecycle_stage=meta.get("lifecycle_stage"),
                 path=str(path),
+            )
+        )
+    return experiments
+
+
+def discover_experiments_via_client(tracking_uri: str) -> list[Experiment]:
+    client = _load_mlflow_client(tracking_uri)
+    experiments = []
+    for experiment in client.search_experiments(max_results=1000):
+        experiments.append(
+            Experiment(
+                experiment_id=str(experiment.experiment_id),
+                name=experiment.name,
+                artifact_location=getattr(experiment, "artifact_location", None),
+                lifecycle_stage=getattr(experiment, "lifecycle_stage", None),
+                path="",
             )
         )
     return experiments
@@ -175,6 +206,56 @@ def discover_runs(store_root: Path | None) -> list[Run]:
     return runs
 
 
+def discover_runs_via_client(
+    tracking_uri: str,
+    *,
+    experiment_id: str | None = None,
+    experiment_name: str | None = None,
+    experiments: list[Experiment] | None = None,
+    run_ids: set[str] | None = None,
+    limit: int = 500,
+) -> list[Run]:
+    client = _load_mlflow_client(tracking_uri)
+    selected_experiment_ids: list[str] = []
+    if experiment_name and experiments is not None:
+        selected_experiment_ids = [
+            experiment.experiment_id for experiment in experiments if experiment.name == experiment_name
+        ]
+    elif experiment_id:
+        selected_experiment_ids = [experiment_id]
+    elif experiments is not None:
+        selected_experiment_ids = [experiment.experiment_id for experiment in experiments]
+
+    if not selected_experiment_ids:
+        return []
+
+    payload = client.search_runs(
+        experiment_ids=selected_experiment_ids,
+        filter_string="",
+        max_results=limit,
+    )
+    runs: list[Run] = []
+    for item in payload:
+        run_id = item.info.run_id
+        if run_ids and run_id not in run_ids:
+            continue
+        runs.append(
+            Run(
+                run_id=run_id,
+                experiment_id=str(item.info.experiment_id),
+                status=getattr(item.info, "status", None),
+                artifact_uri=getattr(item.info, "artifact_uri", None),
+                start_time=getattr(item.info, "start_time", None),
+                end_time=getattr(item.info, "end_time", None),
+                params=dict(item.data.params),
+                metrics={key: float(value) for key, value in item.data.metrics.items()},
+                tags=dict(item.data.tags),
+                path="",
+            )
+        )
+    return runs
+
+
 def filter_runs(
     runs: list[Run],
     *,
@@ -207,6 +288,17 @@ def artifact_path_for_run(run: Run) -> Path | None:
         return candidate
     default = Path(run.path) / "artifacts"
     return default if default.exists() else None
+
+
+def list_artifacts_via_client(tracking_uri: str, run_id: str, path: str | None = None) -> list[str]:
+    client = _load_mlflow_client(tracking_uri)
+    artifacts = client.list_artifacts(run_id, path=path)
+    output: list[str] = []
+    for artifact in artifacts:
+        output.append(artifact.path)
+        if artifact.is_dir:
+            output.extend(list_artifacts_via_client(tracking_uri, run_id, artifact.path))
+    return sorted(output)
 
 
 def run_to_dict(run: Run) -> dict[str, Any]:
