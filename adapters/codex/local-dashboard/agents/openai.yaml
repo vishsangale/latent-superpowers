@@ -1,4 +1,4 @@
 interface:
   display_name: "Local Dashboard"
   short_description: "Serve a no-auth local experiment dashboard"
-  default_prompt: "Use $local-dashboard to inspect local MLflow and W&B runs in a browser and compare them without external services."
+  default_prompt: "Use $local-dashboard to inspect local MLflow and W&B runs in a browser, compare variants with explicit metric direction, preview artifacts, and refresh local state without external services."

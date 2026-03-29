@@ -1,19 +1,19 @@
 ---
 name: local-dashboard
-description: Use when the task involves browsing local runs in a browser, comparing local MLflow and W&B data, inspecting artifacts, or giving a single-user local dashboard over experiment results without requiring hosted services or API keys.
+description: Use when the task involves browsing local runs in a browser, comparing local MLflow and W&B data, previewing artifacts, refreshing local state, or giving a single-user local dashboard over experiment results without requiring hosted services or API keys.
 ---
 
 # Local Dashboard
 
 ## Overview
 
-Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style comparisons without auth or external services. This Codex adapter is intentionally thin and delegates real functionality to the shared core under `../../../core/local-dashboard`.
+Serve a local browser UI over MLflow, W&B, artifacts, shortlist comparisons, tradeoff views, and grouped experiment analysis without auth or external services. This Codex adapter is intentionally thin and delegates real functionality to the shared core under `../../../core/local-dashboard`.
 
 ## Use This Skill When
 
 - The user wants a local web UI over local experiment runs.
 - The task is to browse local MLflow and W&B data without auth or hosted dashboards.
-- The user wants run tables, grouped comparisons, and artifact browsing from local files.
+- The user wants run tables, grouped comparisons, artifact preview, tradeoff views, shortlist comparison, or project rollups from local files.
 
 ## Do Not Use This Skill For
 
@@ -25,8 +25,8 @@ Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style compari
 
 - Load local run data into one normalized shape before serving anything.
 - Keep the dashboard single-user, local-first, and zero-auth.
-- Prefer simple JSON APIs plus a static local frontend.
-- Expose grouped comparison and artifact inspection directly in the UI.
+- Prefer simple JSON APIs plus a static local frontend that can refresh local state safely.
+- Expose grouped comparison, shortlist comparison, tradeoff analysis, and artifact inspection directly in the UI.
 
 ## Safety Rules
 
@@ -37,7 +37,7 @@ Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style compari
 ## Shared Commands
 
 - `python ../../../core/local-dashboard/scripts/index_runs.py`: Load local MLflow and W&B sources and emit a normalized dashboard index.
-- `python ../../../core/local-dashboard/scripts/serve_dashboard.py`: Serve a local dashboard with JSON APIs and a browser UI for runs, comparisons, and artifacts.
+- `python ../../../core/local-dashboard/scripts/serve_dashboard.py`: Serve a local dashboard with JSON APIs and a browser UI for filtered runs, grouped comparisons, shortlist review, tradeoff views, refresh, and artifact preview.
 
 ## Shared References
 
@@ -51,13 +51,14 @@ Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style compari
 1. Resolve local MLflow and W&B sources.
 2. Build a normalized local run index.
 3. Start the dashboard server on a chosen host and port.
-4. Use the UI or JSON APIs to inspect runs, grouped comparisons, and artifacts.
+4. Use the UI or JSON APIs to inspect runs, compare variants with explicit metric direction, review tradeoffs, and preview artifacts.
 
 Helpers: `index_runs.py`, `serve_dashboard.py`
 
 ## Expected Outputs
 
 - a local dashboard URL
-- source and run counts
-- grouped comparison data for one explicit metric
-- artifact listings for selected runs
+- source health and run counts
+- grouped comparison data for one explicit metric and direction
+- shortlist and tradeoff views over the current filtered slice
+- artifact listings plus preview or download for selected runs

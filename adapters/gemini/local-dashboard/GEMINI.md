@@ -4,7 +4,7 @@ Generated from `core/local-dashboard/skill-spec.yaml`.
 
 ## Purpose
 
-Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style comparisons without auth or external services.
+Serve a local browser UI over MLflow, W&B, artifacts, shortlist comparisons, tradeoff views, and grouped experiment analysis without auth or external services.
 
 This adapter is a thin wrapper over the shared local-dashboard core. Prefer invoking the CLI helpers under the shared core before building ad-hoc local viewers.
 
@@ -12,7 +12,7 @@ This adapter is a thin wrapper over the shared local-dashboard core. Prefer invo
 
 - The user wants a local web UI over local experiment runs.
 - The task is to browse local MLflow and W&B data without auth or hosted dashboards.
-- The user wants run tables, grouped comparisons, and artifact browsing from local files.
+- The user wants run tables, grouped comparisons, artifact preview, tradeoff views, shortlist comparison, or project rollups from local files.
 
 ## Avoid When
 
@@ -24,8 +24,8 @@ This adapter is a thin wrapper over the shared local-dashboard core. Prefer invo
 
 - Load local run data into one normalized shape before serving anything.
 - Keep the dashboard single-user, local-first, and zero-auth.
-- Prefer simple JSON APIs plus a static local frontend.
-- Expose grouped comparison and artifact inspection directly in the UI.
+- Prefer simple JSON APIs plus a static local frontend that can refresh local state safely.
+- Expose grouped comparison, shortlist comparison, tradeoff analysis, and artifact inspection directly in the UI.
 
 ## Safety Rules
 
@@ -42,7 +42,7 @@ This adapter is a thin wrapper over the shared local-dashboard core. Prefer invo
 ## Command Surface
 
 - `python ../../../core/local-dashboard/scripts/index_runs.py`: Load local MLflow and W&B sources and emit a normalized dashboard index.
-- `python ../../../core/local-dashboard/scripts/serve_dashboard.py`: Serve a local dashboard with JSON APIs and a browser UI for runs, comparisons, and artifacts.
+- `python ../../../core/local-dashboard/scripts/serve_dashboard.py`: Serve a local dashboard with JSON APIs and a browser UI for filtered runs, grouped comparisons, shortlist review, tradeoff views, refresh, and artifact preview.
 
 ## Workflows
 
@@ -51,7 +51,7 @@ This adapter is a thin wrapper over the shared local-dashboard core. Prefer invo
 1. Resolve local MLflow and W&B sources.
 2. Build a normalized local run index.
 3. Start the dashboard server on a chosen host and port.
-4. Use the UI or JSON APIs to inspect runs, grouped comparisons, and artifacts.
+4. Use the UI or JSON APIs to inspect runs, compare variants with explicit metric direction, review tradeoffs, and preview artifacts.
 
 Helpers: `index_runs.py`, `serve_dashboard.py`
 
@@ -63,6 +63,7 @@ Helpers: `index_runs.py`, `serve_dashboard.py`
 ## Expected Outputs
 
 - a local dashboard URL
-- source and run counts
-- grouped comparison data for one explicit metric
-- artifact listings for selected runs
+- source health and run counts
+- grouped comparison data for one explicit metric and direction
+- shortlist and tradeoff views over the current filtered slice
+- artifact listings plus preview or download for selected runs
