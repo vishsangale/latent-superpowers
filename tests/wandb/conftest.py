@@ -96,3 +96,31 @@ def sample_runs(wandb_offline_dir: Path) -> dict[str, object]:
         "run_files": run_files,
         "runs": load_offline_runs([str(wandb_offline_dir)]),
     }
+
+
+def create_artifact_run(
+    wandb_offline_dir: Path,
+    *,
+    project: str = "demo-project",
+    group: str | None = None,
+    artifact_name: str = "synthetic-model",
+    artifact_type: str = "model",
+    aliases: list[str] | None = None,
+) -> str:
+    wandb_offline_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("WANDB_SILENT", "true")
+    run = wandb.init(
+        project=project,
+        dir=str(wandb_offline_dir),
+        mode="offline",
+        group=group,
+        job_type="train",
+    )
+    artifact_path = wandb_offline_dir / f"{artifact_name.replace('/', '-')}.txt"
+    artifact_path.write_text("checkpoint data", encoding="utf-8")
+    artifact = wandb.Artifact(artifact_name, type=artifact_type)
+    artifact.add_file(str(artifact_path))
+    run.log_artifact(artifact, aliases=aliases or ["latest"])
+    run.summary["avg_reward"] = 4.2
+    run.finish()
+    return run.id
