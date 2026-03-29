@@ -664,12 +664,37 @@ HTML = """<!doctype html>
       border-top: 1px solid #efe4d5;
       padding-top: 10px;
     }
+    .viz-shell {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #fffdf8, #fff7ef);
+      padding: 12px;
+    }
+    .viz-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .viz-svg {
+      width: 100%;
+      min-height: 320px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .rollup-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
     @media (max-width: 1240px) {
       .hero, .layout { grid-template-columns: 1fr; }
     }
     @media (max-width: 980px) {
       .controls { grid-template-columns: 1fr 1fr; }
-      .grid-2, .detail-grid, .short-grid { grid-template-columns: 1fr; }
+      .grid-2, .detail-grid, .short-grid, .rollup-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
       .page { padding: 16px 12px 28px; }
@@ -762,6 +787,23 @@ HTML = """<!doctype html>
         <section class="panel card">
           <div class="section-head">
             <div>
+              <h2>Tradeoff View</h2>
+              <p class="section-copy">Scatter the active metric against a second metric for the current filtered slice.</p>
+            </div>
+            <select id="secondaryMetricSelect" style="max-width:260px;"></select>
+          </div>
+          <div class="viz-shell">
+            <div class="viz-head">
+              <div class="tiny">X: active metric · Y: secondary metric</div>
+              <div class="tiny" id="tradeoffMeta">Loading tradeoff view...</div>
+            </div>
+            <div id="tradeoffShell"></div>
+          </div>
+        </section>
+
+        <section class="panel card">
+          <div class="section-head">
+            <div>
               <h2>Runs</h2>
               <p class="section-copy">Sorted by the active metric and direction. Pin up to three runs for side-by-side review.</p>
             </div>
@@ -794,6 +836,16 @@ HTML = """<!doctype html>
             </div>
           </div>
           <div class="health-list" id="healthList"></div>
+        </section>
+
+        <section class="panel card">
+          <div class="section-head">
+            <div>
+              <h2>Project Rollups</h2>
+              <p class="section-copy">Aggregate the current filtered slice by project or experiment.</p>
+            </div>
+          </div>
+          <div class="rollup-grid" id="rollupGrid"></div>
         </section>
 
         <section class="panel card">
@@ -898,6 +950,10 @@ HTML = """<!doctype html>
 
     function activeStatus() {
       return document.getElementById('statusSelect').value || 'all';
+    }
+
+    function activeSecondaryMetric() {
+      return document.getElementById('secondaryMetricSelect').value || '';
     }
 
     function downloadJson(filename, payload) {
@@ -1060,6 +1116,24 @@ HTML = """<!doctype html>
       }
     }
 
+    function renderSecondaryMetricControl() {
+      const select = document.getElementById('secondaryMetricSelect');
+      const current = activeSecondaryMetric();
+      const options = (summaryData.available_metrics || []).filter(metric => metric !== activeMetric());
+      select.innerHTML = '';
+      const preferred = current && options.includes(current) ? current : (options[0] || '');
+      for (const metric of options) {
+        const option = document.createElement('option');
+        option.value = metric;
+        option.textContent = metric;
+        if (metric === preferred) option.selected = true;
+        select.appendChild(option);
+      }
+      if (preferred && select.value !== preferred) {
+        select.value = preferred;
+      }
+    }
+
     function renderVariantChips() {
       const root = document.getElementById('quickVariantRow');
       root.innerHTML = '';
@@ -1104,6 +1178,109 @@ HTML = """<!doctype html>
           shell.innerHTML = `<strong>warning</strong><div class="tiny">${escapeHtml(warning)}</div>`;
           root.appendChild(shell);
         }
+      }
+    }
+
+    function renderTradeoff() {
+      const root = document.getElementById('tradeoffShell');
+      const meta = document.getElementById('tradeoffMeta');
+      const xMetric = activeMetric();
+      const yMetric = activeSecondaryMetric();
+      const runs = sourceFilteredRuns().filter(run => (
+        run.metrics && run.metrics[xMetric] !== undefined && run.metrics[yMetric] !== undefined
+      ));
+      if (!xMetric || !yMetric || !runs.length) {
+        meta.textContent = 'Need two populated metrics in the filtered slice.';
+        root.innerHTML = '<div class="empty">No runs have both metrics for the current slice.</div>';
+        return;
+      }
+      const xValues = runs.map(run => Number(run.metrics[xMetric]));
+      const yValues = runs.map(run => Number(run.metrics[yMetric]));
+      const minX = Math.min(...xValues);
+      const maxX = Math.max(...xValues);
+      const minY = Math.min(...yValues);
+      const maxY = Math.max(...yValues);
+      const width = 780;
+      const height = 320;
+      const pad = 38;
+      const xSpan = Math.max(maxX - minX, 1e-9);
+      const ySpan = Math.max(maxY - minY, 1e-9);
+      const dots = runs.map(run => {
+        const x = pad + ((Number(run.metrics[xMetric]) - minX) / xSpan) * (width - pad * 2);
+        const y = height - pad - ((Number(run.metrics[yMetric]) - minY) / ySpan) * (height - pad * 2);
+        const color = run.source === 'wandb-offline' ? '#174c73' : '#b84c17';
+        return `
+          <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="${color}" fill-opacity="0.85" stroke="white" stroke-width="1.5" data-run-id="${escapeHtml(run.run_id)}">
+            <title>${escapeHtml((run.name || run.run_id) + ' · ' + xMetric + '=' + formatMetric(run.metrics[xMetric]) + ' · ' + yMetric + '=' + formatMetric(run.metrics[yMetric]))}</title>
+          </circle>
+        `;
+      }).join('');
+      meta.textContent = runs.length + ' run(s) with both metrics';
+      root.innerHTML = `
+        <svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="tradeoff scatter plot">
+          <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#cbb9a2" stroke-width="1.5"></line>
+          <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#cbb9a2" stroke-width="1.5"></line>
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" fill="#6d6257" font-size="12">${escapeHtml(xMetric)}</text>
+          <text x="16" y="${height / 2}" text-anchor="middle" fill="#6d6257" font-size="12" transform="rotate(-90 16 ${height / 2})">${escapeHtml(yMetric)}</text>
+          <text x="${pad}" y="${height - 16}" fill="#6d6257" font-size="11">${formatMetric(minX)}</text>
+          <text x="${width - pad}" y="${height - 16}" text-anchor="end" fill="#6d6257" font-size="11">${formatMetric(maxX)}</text>
+          <text x="${pad + 4}" y="${pad + 12}" fill="#6d6257" font-size="11">${formatMetric(maxY)}</text>
+          <text x="${pad + 4}" y="${height - pad - 6}" fill="#6d6257" font-size="11">${formatMetric(minY)}</text>
+          ${dots}
+        </svg>
+      `;
+      root.querySelectorAll('circle[data-run-id]').forEach(node => {
+        node.style.cursor = 'pointer';
+        node.addEventListener('click', async () => {
+          selectedRunId = node.dataset.runId;
+          activeTab = 'metrics';
+          activeArtifactPath = null;
+          await renderInspector();
+        });
+      });
+    }
+
+    function renderRollups() {
+      const root = document.getElementById('rollupGrid');
+      root.innerHTML = '';
+      const metric = activeMetric();
+      const runs = sourceFilteredRuns();
+      const groups = new Map();
+      for (const run of runs) {
+        const label = run.project || run.experiment || 'unknown';
+        if (!groups.has(label)) groups.set(label, []);
+        groups.get(label).push(run);
+      }
+      const rows = [...groups.entries()]
+        .map(([label, groupRuns]) => {
+          const valid = groupRuns.filter(run => run.metrics && run.metrics[metric] !== undefined);
+          const values = valid.map(run => Number(run.metrics[metric]));
+          return {
+            label,
+            count: groupRuns.length,
+            mean: values.length ? values.reduce((a, b) => a + b, 0) / values.length : null,
+            missing: groupRuns.length - values.length,
+            best: topRun(groupRuns),
+          };
+        })
+        .sort((left, right) => {
+          const leftValue = left.mean === null ? (activeDirection() === 'max' ? -Infinity : Infinity) : left.mean;
+          const rightValue = right.mean === null ? (activeDirection() === 'max' ? -Infinity : Infinity) : right.mean;
+          return activeDirection() === 'max' ? rightValue - leftValue : leftValue - rightValue;
+        });
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">No project rollups for the current slice.</div>';
+        return;
+      }
+      for (const row of rows.slice(0, 8)) {
+        const shell = document.createElement('div');
+        shell.className = 'health-item';
+        shell.innerHTML = `
+          <strong>${escapeHtml(row.label)}</strong>
+          <div class="tiny">${row.count} run(s) · mean ${formatMetric(row.mean)} · missing ${row.missing}</div>
+          <div class="tiny">best ${escapeHtml(row.best ? (row.best.name || row.best.run_id) : '-')}</div>
+        `;
+        root.appendChild(shell);
       }
     }
 
@@ -1451,6 +1628,7 @@ HTML = """<!doctype html>
       renderSourceTabs();
       renderMetricControls(allRuns);
       renderStatusControl();
+      renderSecondaryMetricControl();
       renderVariantChips();
       renderHealth();
     }
@@ -1460,8 +1638,11 @@ HTML = """<!doctype html>
       updateStats(runs);
       renderMetricControls(runs);
       renderStatusControl();
+      renderSecondaryMetricControl();
       renderVariantChips();
       renderRuns();
+      renderTradeoff();
+      renderRollups();
       renderShortlist();
       renderSummary();
       await renderCompare();
@@ -1480,6 +1661,7 @@ HTML = """<!doctype html>
         document.getElementById('metricInput').value = event.target.value;
         await renderAll();
       });
+      document.getElementById('secondaryMetricSelect').addEventListener('change', () => renderAll());
       document.getElementById('directionSelect').addEventListener('change', () => renderAll());
       document.getElementById('variantInput').addEventListener('change', () => renderAll());
       document.getElementById('statusSelect').addEventListener('change', () => renderAll());
