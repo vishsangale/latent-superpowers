@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -9,6 +10,8 @@ import time
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+import pytest
 
 
 INDEX_SCRIPT = (
@@ -187,6 +190,53 @@ def test_dashboard_warns_on_non_loopback_host(ablation_store: Path) -> None:
         _wait_for_server(port)
         summary = _get_json(port, "/api/summary")
         assert any("zero-auth" in warning for warning in summary["warnings"])
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_dashboard_browser_dom(ablation_store: Path) -> None:
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
+    if not chrome:
+        pytest.skip("headless chrome is not available")
+
+    port = _pick_port()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(SERVER_SCRIPT),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--mlflow-uri",
+            str(ablation_store),
+            "--mlflow-experiment-name",
+            "recsys",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        _wait_for_server(port)
+        dom = subprocess.run(
+            [
+                chrome,
+                "--headless=new",
+                "--disable-gpu",
+                "--virtual-time-budget=5000",
+                "--dump-dom",
+                f"http://127.0.0.1:{port}/",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert "Local Experiment Dashboard" in dom
+        assert "Source Health" in dom
+        assert "run_a" in dom
+        assert "Tradeoff View" in dom
     finally:
         process.terminate()
         process.wait(timeout=5)
