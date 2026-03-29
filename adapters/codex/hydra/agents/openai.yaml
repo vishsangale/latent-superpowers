@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hydra"
+  short_description: "Plan and debug Hydra config workflows"
+  default_prompt: "Use $hydra to inspect this repo Hydra configuration and explain the effective run config."
