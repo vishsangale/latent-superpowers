@@ -48,10 +48,9 @@ def test_extract_method_plan(paper_summary: Path) -> None:
     assert payload["sections"]["evaluation"]
 
 
-def test_map_and_scaffold_plan(paper_summary: Path) -> None:
-    repo = "/home/vishsangale/workspace/rl-recsys"
+def test_map_and_scaffold_plan(paper_summary: Path, paper_repo: Path) -> None:
     mapped = subprocess.run(
-        [sys.executable, str(MAP), str(paper_summary), "--repo", repo, "--json"],
+        [sys.executable, str(MAP), str(paper_summary), "--repo", str(paper_repo), "--json"],
         check=True,
         capture_output=True,
         text=True,
@@ -60,7 +59,7 @@ def test_map_and_scaffold_plan(paper_summary: Path) -> None:
     assert mapped_payload["top_matches"]
 
     plan = subprocess.run(
-        [sys.executable, str(SCAFFOLD), str(paper_summary), "--repo", repo, "--json"],
+        [sys.executable, str(SCAFFOLD), str(paper_summary), "--repo", str(paper_repo), "--json"],
         check=True,
         capture_output=True,
         text=True,

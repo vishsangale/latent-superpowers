@@ -49,4 +49,4 @@ Install all live Codex adapters at once:
 python3 tools/install_codex_adapters.py --mode symlink --force
 ```
 
-GitHub Actions runs the same repo validator on pushes and pull requests via [.github/workflows/validate.yml](/home/vishsangale/workspace/latent-superpowers/.github/workflows/validate.yml).
+GitHub Actions runs the same repo validator on pushes and pull requests via [`/.github/workflows/validate.yml`](.github/workflows/validate.yml).

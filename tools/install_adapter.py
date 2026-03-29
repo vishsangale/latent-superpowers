@@ -6,6 +6,7 @@ Generate and install an adapter from latent-superpowers into a live tool directo
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -23,6 +24,26 @@ def remove_path(path: Path) -> None:
         path.unlink()
     elif path.is_dir():
         shutil.rmtree(path)
+
+
+def codex_install_core_path(skill_source: Path, destination: Path) -> str:
+    core_dir = (CORE_DIR / skill_source.name).resolve()
+    return os.path.relpath(core_dir, destination)
+
+
+def rewrite_codex_skill(skill_source: Path, destination: Path) -> None:
+    source_skill = skill_source / "SKILL.md"
+    destination.mkdir(parents=True, exist_ok=True)
+    core_path = codex_install_core_path(skill_source, destination)
+    rewritten = source_skill.read_text(encoding="utf-8").replace(
+        f"../../../core/{skill_source.name}",
+        core_path,
+    )
+    (destination / "SKILL.md").write_text(rewritten, encoding="utf-8")
+
+    agents_source = skill_source / "agents"
+    if agents_source.exists():
+        shutil.copytree(agents_source, destination / "agents")
 
 
 def install_adapter(
@@ -50,7 +71,7 @@ def install_adapter(
     if destination.exists() or destination.is_symlink():
         if destination.is_symlink():
             try:
-                if destination.resolve() == source.resolve():
+                if adapter != "codex" and destination.resolve() == source.resolve():
                     return destination
             except FileNotFoundError:
                 pass
@@ -60,7 +81,11 @@ def install_adapter(
             )
         remove_path(destination)
 
-    if mode == "symlink":
+    if adapter == "codex":
+        rewrite_codex_skill(source, destination)
+        if mode == "symlink":
+            (destination / ".adapter-source").symlink_to(source, target_is_directory=True)
+    elif mode == "symlink":
         destination.symlink_to(source, target_is_directory=True)
     elif mode == "copy":
         shutil.copytree(source, destination)

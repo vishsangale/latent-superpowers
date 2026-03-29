@@ -191,7 +191,7 @@ def load_wandb_runs_normalized(
                 metrics=summary_metrics,
                 params=flatten_dict(run.config),
                 tags={"entity": run.entity, "job_type": run.job_type, "tags": run.tags},
-                artifact_root=run.path,
+                artifact_root=str(Path(run.path).resolve().parent),
                 path=run.path,
                 history_count=len(run.history),
             )
@@ -229,4 +229,3 @@ def load_local_runs(
             )
         )
     return runs
-
