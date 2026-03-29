@@ -43,7 +43,7 @@ def test_artifact_lineage_finds_producer_run(wandb_offline_dir: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["match_count"] == 1
     assert payload["matches"][0]["artifact"]["name"] == "synthetic-model"
-    assert payload["matches"][0]["artifact"]["aliases"] == ["latest", "best"]
+    assert sorted(payload["matches"][0]["artifact"]["aliases"]) == ["best", "latest"]
     assert payload["matches"][0]["producer_run"]["project"] == "demo-project"
 
 

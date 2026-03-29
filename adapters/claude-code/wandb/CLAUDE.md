@@ -45,6 +45,7 @@ This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI
 - `python ../../../core/wandb/scripts/compare_runs.py`: Compare runs under explicit metrics and filters.
 - `python ../../../core/wandb/scripts/summarize_sweep.py`: Summarize a W&B sweep with winners, tradeoffs, and incomplete runs.
 - `python ../../../core/wandb/scripts/artifact_lineage.py`: Inspect artifact versions, producer runs, and checkpoint lineage.
+- `python ../../../core/wandb/scripts/onboard_wandb_project.py`: Inspect a repository and produce a W&B onboarding plan with validation steps.
 
 ## Workflows
 
@@ -74,6 +75,15 @@ Helpers: `check_wandb_context.py`, `summarize_sweep.py`
 4. Report the exact artifact or checkpoint lineage.
 
 Helpers: `artifact_lineage.py`
+
+### Onboard a project
+
+1. Inspect the repository structure, training entrypoints, and config surface.
+2. Identify the most stable place to initialize W&B and the files that should own logging behavior.
+3. Produce a concrete integration plan with offline-first validation commands.
+4. Confirm the shortest test path before changing training code.
+
+Helpers: `onboard_wandb_project.py`
 
 ## References
 

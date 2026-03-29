@@ -37,6 +37,8 @@ commands:
     summary: Summarize a W&B sweep with winners, tradeoffs, and incomplete runs.
   - name: artifact_lineage.py
     summary: Inspect artifact versions, producer runs, and checkpoint lineage.
+  - name: onboard_wandb_project.py
+    summary: Inspect a repository and produce a W&B onboarding plan with validation steps.
 references:
   - path: references/workflow.md
     summary: Project resolution, run gathering, and comparison flow.
@@ -71,5 +73,13 @@ workflows:
       - Identify the producing run and relevant aliases.
       - Identify downstream consumers when available.
       - Report the exact artifact or checkpoint lineage.
+  - name: Onboard a project
+    helpers:
+      - onboard_wandb_project.py
+    steps:
+      - Inspect the repository structure, training entrypoints, and config surface.
+      - Identify the most stable place to initialize W&B and the files that should own logging behavior.
+      - Produce a concrete integration plan with offline-first validation commands.
+      - Confirm the shortest test path before changing training code.
 generic_adapter_note: |
   This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI helpers under the shared core before writing custom analysis logic.

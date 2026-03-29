@@ -26,7 +26,7 @@ def _extract_artifact_payload(event: dict[str, Any]) -> dict[str, Any]:
         "name": event.get("name"),
         "type": event.get("type"),
         "digest": event.get("digest"),
-        "aliases": event.get("aliases", []),
+        "aliases": sorted(event.get("aliases", [])),
         "version_index": event.get("version_index"),
         "manifest_entries": contents,
         "finalize": event.get("finalize", False),
