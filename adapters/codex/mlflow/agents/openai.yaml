@@ -1,0 +1,4 @@
+interface:
+  display_name: "MLflow"
+  short_description: "Analyze MLflow tracking workflows"
+  default_prompt: "Use $mlflow to inspect experiments, compare runs, and summarize MLflow tracking data for this project."

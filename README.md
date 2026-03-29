@@ -11,6 +11,8 @@ Shared agent skills with a portable core and generated adapters for multiple cod
 ## Current Status
 
 - `hydra` has been ported into the shared-core layout
+- `wandb` has shared-core inspection, onboarding, and self-hosted server checks
+- `mlflow` is being added in the shared-core layout
 - the live Codex Hydra skill is installed from the generated Codex adapter
 
 ## Typical Workflow

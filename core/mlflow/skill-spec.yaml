@@ -1,0 +1,73 @@
+name: mlflow
+title: MLflow
+summary: Inspect, compare, and summarize MLflow tracking workflows and local tracking stores.
+description: Use when the task involves MLflow experiments, runs, metrics, params, artifacts, tracking URIs, or selecting the best run under explicit evaluation criteria.
+codex:
+  display_name: MLflow
+  short_description: Analyze MLflow tracking workflows
+  default_prompt: Use $mlflow to inspect experiments, compare runs, and summarize MLflow tracking data for this project.
+use_when:
+  - The user mentions mlflow, tracking URIs, experiments, runs, artifacts, model registry, or local mlruns stores.
+  - The task is to compare runs, inspect experiment history, recover artifacts, or explain local tracking metadata.
+  - The user wants concise experiment summaries grounded in MLflow metrics, params, tags, and artifacts.
+avoid_when:
+  - Hydra config composition or override-debugging tasks.
+  - W&B-specific workflows.
+  - Blind mutation. Deleting runs, editing registry state, or altering experiments should only happen on explicit request.
+principles:
+  - Resolve the tracking URI before inspecting runs.
+  - Make the definition of best run explicit.
+  - Prefer read-only inspection and summaries first.
+  - Treat file-backed tracking stores and remote tracking servers as distinct debugging modes.
+safety_rules:
+  - Prefer read-only inspection and summarization.
+  - Do not mutate runs, artifacts, or registry state unless the user explicitly requests it.
+  - State missing metrics, partial artifacts, and local-store limitations as analysis risks.
+expected_outputs:
+  - resolved tracking URI and storage mode
+  - the experiment or run set being compared
+  - the ranking metric and any constraints
+  - a compact run summary, artifact summary, or context summary
+commands:
+  - name: check_mlflow_context.py
+    summary: Resolve the active tracking URI and summarize the local tracking-store context.
+  - name: search_runs.py
+    summary: List MLflow runs with experiment, metric, param, and tag context.
+  - name: compare_runs.py
+    summary: Compare MLflow runs under explicit metrics and filters.
+  - name: list_artifacts.py
+    summary: List local artifacts for a specific MLflow run.
+references:
+  - path: references/workflow.md
+    summary: Tracking URI resolution, run gathering, and comparison flow.
+  - path: references/tracking-uri.md
+    summary: Distinguish file-backed tracking stores from remote MLflow servers.
+  - path: references/artifacts.md
+    summary: Artifact layout expectations and local inspection caveats.
+workflows:
+  - name: Inspect context
+    helpers:
+      - check_mlflow_context.py
+    steps:
+      - Resolve the tracking URI from CLI input, environment, or a local mlruns directory.
+      - Confirm whether the store is file-backed or remote.
+      - Summarize available experiments before selecting one for deeper analysis.
+  - name: Compare runs
+    helpers:
+      - search_runs.py
+      - compare_runs.py
+    steps:
+      - Resolve the target experiment by name or ID.
+      - Make the ranking metric explicit.
+      - Pull run metrics, params, and tags.
+      - Present the comparison and explain why one run beats another.
+  - name: Inspect artifacts
+    helpers:
+      - list_artifacts.py
+    steps:
+      - Resolve the target run ID.
+      - Map the run to its local artifact path.
+      - Summarize the files available under that artifact root.
+      - State when the tracking store does not expose artifacts locally.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared MLflow core. Prefer invoking the CLI helpers under the shared core before writing custom analysis logic.
