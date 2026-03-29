@@ -8,15 +8,45 @@ Shared agent skills with a portable core and generated adapters for multiple cod
 - `adapters/`: generated wrappers for Codex, Claude Code, Gemini, and OpenCode
 - `tools/`: generators and installation helpers
 
-## Current Status
+## Skills
 
-- `hydra` has been ported into the shared-core layout
-- `wandb` has shared-core inspection, onboarding, and self-hosted server checks
-- `mlflow` is being added in the shared-core layout
-- the live Codex Hydra skill is installed from the generated Codex adapter
+- `hydra`
+- `wandb`
+- `mlflow`
+- `ablation-analysis`
+- `profiling-optimization`
+- `local-dashboard`
+- `paper-to-code`
+- `experiment-runner`
+- `eval-benchmark`
+- `dataset-pipeline`
+- `reproducibility`
+- `slurm-cluster`
 
 ## Typical Workflow
 
 1. Edit a shared skill under `core/<skill>/`
 2. Regenerate wrappers with `python3 tools/generate_adapters.py --skill <skill>`
 3. Install the Codex adapter with `python3 tools/install_adapter.py --skill <skill> --adapter codex --mode symlink`
+
+## Development
+
+Install dev dependencies:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+```
+
+Validate the whole repo:
+
+```bash
+python3 tools/validate_repo.py
+```
+
+Install all live Codex adapters at once:
+
+```bash
+python3 tools/install_codex_adapters.py --mode symlink --force
+```
+
+GitHub Actions runs the same repo validator on pushes and pull requests via [.github/workflows/validate.yml](/home/vishsangale/workspace/latent-superpowers/.github/workflows/validate.yml).
