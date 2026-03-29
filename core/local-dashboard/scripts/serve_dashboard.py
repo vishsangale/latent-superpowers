@@ -90,13 +90,18 @@ def make_handler(app_state: AppState):
 
         def _raw_file(self, path: Path):
             mime_type, _ = mimetypes.guess_type(path.name)
-            payload = path.read_bytes()
+            size = path.stat().st_size
             self.send_response(200)
             self.send_header("Content-Type", mime_type or "application/octet-stream")
-            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Content-Length", str(size))
             self.send_header("Content-Disposition", f'inline; filename="{path.name}"')
             self.end_headers()
-            self.wfile.write(payload)
+            with path.open("rb") as handle:
+                while True:
+                    chunk = handle.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
 
         def do_POST(self):  # noqa: N802
             parsed = urlparse(self.path)

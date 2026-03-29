@@ -336,14 +336,15 @@ def read_artifact_preview(state: dict[str, Any], run_id: str, relative_path: str
         payload["image_path"] = relative_path
         return payload
     if kind == "text":
-        raw = target.read_text(encoding="utf-8", errors="replace")
+        with target.open("r", encoding="utf-8", errors="replace") as handle:
+            raw = handle.read(MAX_TEXT_PREVIEW_BYTES + 1)
         if target.suffix.lower() == ".json":
             try:
                 raw = json.dumps(json.loads(raw), indent=2, sort_keys=True)
             except Exception:
                 pass
         payload["text"] = raw[:MAX_TEXT_PREVIEW_BYTES]
-        payload["truncated"] = len(raw.encode("utf-8")) > MAX_TEXT_PREVIEW_BYTES
+        payload["truncated"] = len(raw) > MAX_TEXT_PREVIEW_BYTES
         return payload
     payload["message"] = "Binary preview is not supported in the dashboard."
     return payload
@@ -1138,11 +1139,21 @@ HTML = """<!doctype html>
         </div>
       `;
 
-      const maxMagnitude = Math.max(...rows.map(row => Math.abs(Number(row.summary.mean || 0))), 1);
+      const numericMeans = rows
+        .map(row => row.summary.mean === null ? null : Number(row.summary.mean))
+        .filter(value => value !== null);
+      const minMean = numericMeans.length ? Math.min(...numericMeans) : 0;
+      const maxMean = numericMeans.length ? Math.max(...numericMeans) : 0;
+      const span = Math.max(maxMean - minMean, 1e-9);
       for (const row of rows) {
         const shell = document.createElement('div');
         shell.className = 'variant-row';
-        const width = row.summary.mean !== null ? Math.max(2, (Math.abs(Number(row.summary.mean)) / maxMagnitude) * 100) : 0;
+        let width = 0;
+        if (row.summary.mean !== null) {
+          const value = Number(row.summary.mean);
+          const score = direction === 'max' ? (value - minMean) / span : (maxMean - value) / span;
+          width = Math.max(2, score * 100);
+        }
         const missing = row.count - (row.summary.count || 0);
         shell.innerHTML = `
           <div class="variant-top">

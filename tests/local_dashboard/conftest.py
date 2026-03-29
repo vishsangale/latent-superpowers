@@ -75,6 +75,7 @@ def ablation_store(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def wandb_store(tmp_path: Path) -> Path:
+    pytest.importorskip("wandb")
     root = tmp_path / "wandb"
     code = """
 import os
