@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -28,8 +29,10 @@ def create_offline_run(
     avg_reward: float = 1.0,
     final_ctr: float = 0.1,
     tags: list[str] | None = None,
+    include_avg_reward: bool = True,
 ) -> str:
     wandb_offline_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("WANDB_SILENT", "true")
     run = wandb.init(
         project=project,
         dir=str(wandb_offline_dir),
@@ -49,7 +52,8 @@ def create_offline_run(
             "ctr": final_ctr / 2,
         }
     )
-    run.summary["avg_reward"] = avg_reward
+    if include_avg_reward:
+        run.summary["avg_reward"] = avg_reward
     run.summary["final_ctr"] = final_ctr
     run.finish()
     return run.id
