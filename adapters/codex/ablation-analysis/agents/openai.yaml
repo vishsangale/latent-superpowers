@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ablation Analysis"
+  short_description: "Compare variants and summarize local experiment results"
+  default_prompt: "Use $ablation-analysis to compare local runs, rank variants, and summarize ablation findings for this project."

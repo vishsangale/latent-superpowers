@@ -1,0 +1,71 @@
+name: ablation-analysis
+title: Ablation Analysis
+summary: Collect, compare, rank, plot, and summarize local experiment ablations across MLflow and W&B data.
+description: Use when the task involves comparing experimental variants, ranking runs by a metric, identifying which config factors moved results, generating local plots or tables, or producing concise researcher-facing ablation summaries from MLflow or W&B data.
+codex:
+  display_name: Ablation Analysis
+  short_description: Compare variants and summarize local experiment results
+  default_prompt: Use $ablation-analysis to compare local runs, rank variants, and summarize ablation findings for this project.
+use_when:
+  - The user wants to compare variants, ablations, or hyperparameter choices across local runs.
+  - The task is to rank runs, detect varying factors, compute deltas, or generate plots and concise experiment summaries.
+  - The data lives in local MLflow tracking stores, W&B offline runs, or collected JSON exports.
+avoid_when:
+  - Low-level training configuration work that belongs to Hydra.
+  - Hosted dashboard troubleshooting that belongs to W&B or MLflow directly.
+  - Blind statistical claims. Surface sample-size limits and metric ambiguity explicitly.
+principles:
+  - Normalize runs into a common local shape before comparing anything.
+  - Make the ranking metric and direction explicit.
+  - Separate per-run ranking from grouped variant comparisons.
+  - Treat tiny sample counts and missing metrics as real analysis risks.
+safety_rules:
+  - Prefer read-only local inspection and analysis.
+  - Do not mutate tracking backends or run metadata.
+  - State when conclusions are based on too few runs or on mixed experiment sources.
+expected_outputs:
+  - the run sources included in the analysis
+  - the metric and ranking direction
+  - the varying parameters or grouping keys
+  - a ranked table, grouped comparison, plot path, or concise findings summary
+commands:
+  - name: collect_runs.py
+    summary: Load and normalize local MLflow and W&B runs into a common analysis shape.
+  - name: rank_variants.py
+    summary: Rank runs or grouped variants under an explicit metric and direction.
+  - name: compare_ablations.py
+    summary: Compare grouped ablations, aggregate metric deltas, and identify winners and baselines.
+  - name: plot_ablations.py
+    summary: Generate a local SVG plot for per-run or grouped ablation comparisons.
+  - name: summarize_findings.py
+    summary: Produce a concise researcher-facing Markdown summary from local run data.
+references:
+  - path: references/workflow.md
+    summary: Local run loading, grouping, ranking, and reporting flow.
+  - path: references/metric-discipline.md
+    summary: Metric choice, direction, and small-sample caveats.
+  - path: references/reporting.md
+    summary: Templates for ablation tables, plots, and concise findings.
+workflows:
+  - name: Compare a local experiment set
+    helpers:
+      - collect_runs.py
+      - rank_variants.py
+      - compare_ablations.py
+    steps:
+      - Resolve the local MLflow or W&B run sources.
+      - Normalize runs into a common analysis shape.
+      - Make the ranking metric and direction explicit.
+      - Identify varying factors and compare grouped variants.
+  - name: Produce a compact research summary
+    helpers:
+      - compare_ablations.py
+      - summarize_findings.py
+      - plot_ablations.py
+    steps:
+      - Group runs by the ablation factors that matter.
+      - Rank variants with explicit metric discipline.
+      - Generate a compact table, a local plot, and a Markdown conclusion.
+      - Call out missing metrics, tiny sample counts, and outliers.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared ablation-analysis core. Prefer invoking the CLI helpers under the shared core before writing custom comparison logic.

@@ -1,0 +1,74 @@
+name: profiling-optimization
+title: Profiling Optimization
+summary: Profile local training commands, compare runtime and memory behavior, and turn raw traces into bottleneck-focused optimization guidance.
+description: Use when the task involves slow training loops, peak memory issues, throughput bottlenecks, dataloader stalls, GPU utilization questions, command-level profiling, or summarizing Torch profiler traces for optimization work.
+codex:
+  display_name: Profiling Optimization
+  short_description: Profile local training runs and recommend fixes
+  default_prompt: Use $profiling-optimization to profile this training command, summarize the bottlenecks, and compare optimization options.
+use_when:
+  - The user wants to know why a training or evaluation command is slow.
+  - The task is to measure wall time, memory growth, GPU utilization, or compare profile outputs across runs.
+  - A local Torch profiler trace or command-level runtime profile needs to be summarized into concrete optimization steps.
+avoid_when:
+  - Generic experiment tracking that belongs to W&B or MLflow.
+  - Repository planning work that belongs to paper-to-code.
+  - Blind performance claims without a real profile or command output.
+principles:
+  - Measure first, recommend second.
+  - Prefer repeatable local command profiles over vague bottleneck guesses.
+  - Separate command-level runtime, memory, and GPU signals from operator-level Torch traces.
+  - Turn raw numbers into ranked recommendations with explicit assumptions.
+safety_rules:
+  - Prefer local profiling and read-only inspection.
+  - Do not change training code unless the user asks for an optimization patch.
+  - Call out when recommendations are based on sparse or indirect signals.
+expected_outputs:
+  - the profiled command or trace path
+  - wall time, peak RSS, and GPU summary when available
+  - the highest-confidence bottlenecks
+  - a short ordered list of optimization actions
+commands:
+  - name: profile_command.py
+    summary: Run a local command with wall-time, memory, CPU, and optional GPU sampling, then save a profile JSON.
+  - name: summarize_profile.py
+    summary: Summarize one saved command profile into bottlenecks and recommendations.
+  - name: compare_profiles.py
+    summary: Compare multiple saved command profiles and rank tradeoffs.
+  - name: summarize_torch_trace.py
+    summary: Summarize a Torch profiler Chrome trace into top operators, categories, and hotspots.
+references:
+  - path: references/workflow.md
+    summary: Profile collection, interpretation, and recommendation flow.
+  - path: references/heuristics.md
+    summary: Runtime, memory, CPU, and GPU bottleneck heuristics.
+  - path: references/trace-analysis.md
+    summary: Torch profiler trace interpretation and limitations.
+workflows:
+  - name: Profile a command
+    helpers:
+      - profile_command.py
+      - summarize_profile.py
+    steps:
+      - Run the exact local command under the profiler wrapper.
+      - Capture wall time, CPU, RSS, and optional GPU samples.
+      - Summarize the strongest bottlenecks.
+      - Recommend the highest-impact next optimization steps.
+  - name: Compare optimization attempts
+    helpers:
+      - compare_profiles.py
+    steps:
+      - Collect multiple profile JSON files from related runs.
+      - Compare wall time, memory, and GPU summaries side by side.
+      - Rank the candidates under an explicit objective such as speed or memory.
+      - State the tradeoffs clearly.
+  - name: Inspect a Torch trace
+    helpers:
+      - summarize_torch_trace.py
+    steps:
+      - Parse the Chrome trace events.
+      - Rank the most expensive operators and categories.
+      - Separate CPU-side and CUDA-side hotspots when possible.
+      - Convert the hotspots into concrete optimization directions.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared profiling-optimization core. Prefer invoking the CLI helpers under the shared core before writing ad-hoc profiling logic.

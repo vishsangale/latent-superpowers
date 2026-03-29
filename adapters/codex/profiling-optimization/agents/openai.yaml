@@ -1,0 +1,4 @@
+interface:
+  display_name: "Profiling Optimization"
+  short_description: "Profile local training runs and recommend fixes"
+  default_prompt: "Use $profiling-optimization to profile this training command, summarize the bottlenecks, and compare optimization options."
