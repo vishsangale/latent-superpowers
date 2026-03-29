@@ -10,7 +10,7 @@ This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI
 
 ## Use When
 
-- The user mentions wandb, W&B, runs, groups, sweeps, artifacts, entities, or projects.
+- The user mentions wandb, W&B, runs, groups, sweeps, artifacts, entities, projects, or self-hosted/server configuration.
 - The task is to compare runs, summarize a sweep, explain a dashboard discrepancy, or track down a checkpoint or artifact lineage.
 - The user wants concise experiment summaries grounded in logged metrics, configs, and artifacts.
 
@@ -26,6 +26,7 @@ This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI
 - Make the definition of best run explicit.
 - Prefer selective history pulls over full histories unless the task requires step-level inspection.
 - Treat offline and online W&B usage as separate modes with different debugging steps.
+- Treat self-hosted server reachability as a separate concern from run logging behavior.
 
 ## Safety Rules
 
@@ -42,12 +43,22 @@ This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI
 ## Command Surface
 
 - `python ../../../core/wandb/scripts/check_wandb_context.py`: Verify auth and resolve W&B entity or project context.
+- `python ../../../core/wandb/scripts/check_wandb_server.py`: Verify base_url reachability for a default or self-hosted W&B server.
 - `python ../../../core/wandb/scripts/compare_runs.py`: Compare runs under explicit metrics and filters.
 - `python ../../../core/wandb/scripts/summarize_sweep.py`: Summarize a W&B sweep with winners, tradeoffs, and incomplete runs.
 - `python ../../../core/wandb/scripts/artifact_lineage.py`: Inspect artifact versions, producer runs, and checkpoint lineage.
 - `python ../../../core/wandb/scripts/onboard_wandb_project.py`: Inspect a repository and produce a W&B onboarding plan with validation steps.
 
 ## Workflows
+
+### Verify a server
+
+1. Resolve entity, project, mode, and base_url from the environment or explicit overrides.
+2. Probe the configured base URL separately from any training code.
+3. Confirm whether the deployment is the default cloud endpoint or a self-hosted server.
+4. Only debug online logging after the server itself is reachable.
+
+Helpers: `check_wandb_context.py`, `check_wandb_server.py`
 
 ### Compare runs
 
@@ -90,10 +101,12 @@ Helpers: `onboard_wandb_project.py`
 - `../../../core/wandb/references/workflow.md`: Project resolution, run gathering, and comparison flow.
 - `../../../core/wandb/references/metrics-and-selection.md`: Metric choice, ranking discipline, and common comparison pitfalls.
 - `../../../core/wandb/references/reporting.md`: Templates for concise W&B experiment summaries.
+- `../../../core/wandb/references/self-hosted.md`: Base URL, self-hosted deployment, and server-reachability guidance.
 
 ## Expected Outputs
 
 - resolved entity or project context
+- resolved base_url and deployment mode
 - the run set being compared
 - the ranking metric and any constraints
 - a compact run summary, sweep summary, or artifact lineage summary

@@ -64,23 +64,26 @@ def build_plan(repo: Path) -> dict[str, object]:
     if already_wandb:
         integration_steps = [
             "Inspect the current wandb.init path and keep W&B initialization behind a small wrapper module.",
-            "Verify the config surface exposes project, entity, mode, group, tags, and job_type explicitly.",
+            "Verify the config surface exposes project, entity, mode, base_url, group, tags, and job_type explicitly.",
             "Confirm the trainer logs per-step metrics, terminal summary metrics, and cleanly calls finish().",
             "Add artifact logging only where checkpoints or evaluation bundles need explicit lineage.",
             "Keep offline mode available for tests and local debugging even if online mode is the default in production.",
+            "If a self-hosted deployment is expected, validate WANDB_BASE_URL reachability before debugging the training code.",
         ]
     else:
         integration_steps = [
             "Add wandb as an optional dependency and decide whether the project defaults to offline or online mode.",
             "Create a thin W&B logger wrapper instead of scattering wandb.init and log calls across training code.",
-            "Add a config surface for project, entity, mode, group, tags, and artifact behavior.",
+            "Add a config surface for project, entity, mode, base_url, group, tags, and artifact behavior.",
             "Initialize W&B in the primary training entrypoint or trainer setup path, then log summary metrics at the end of training.",
             "Document the shortest successful offline command before adding online sync or sweep behavior.",
+            "If the team uses a self-hosted deployment, add one explicit server-check command before first online logging.",
         ]
 
     test_plan = [
         "Run the shortest training or evaluation command with W&B enabled in offline mode.",
         "Verify a local offline-run directory is created under the configured wandb output path.",
+        "If base_url is configured, validate it separately with check_wandb_server.py before testing online logging.",
         "Inspect the resulting run summary and confirm the ranking metric is present.",
         "If artifacts are expected, log one small artifact and verify its producer run and manifest via artifact lineage inspection.",
         "Run compare-runs or summarize-sweep over at least two local runs to verify grouping and metric selection are coherent.",

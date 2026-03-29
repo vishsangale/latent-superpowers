@@ -43,6 +43,7 @@ def test_onboard_wandb_project_detects_existing_integration(tmp_path: Path) -> N
     assert payload["already_wandb_enabled"] is True
     assert payload["recommended_entrypoint"] == "experiments/run.py"
     assert any(path.endswith("conf/wandb/default.yaml") for path in payload["wandb_related_files"])
+    assert any("base_url" in step for step in payload["integration_steps"])
 
 
 def test_onboard_wandb_project_plans_new_integration(tmp_path: Path) -> None:
@@ -61,3 +62,4 @@ def test_onboard_wandb_project_plans_new_integration(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["already_wandb_enabled"] is False
     assert "conf/wandb/default.yaml" in payload["proposed_files"]
+    assert any("base_url" in step for step in payload["integration_steps"])

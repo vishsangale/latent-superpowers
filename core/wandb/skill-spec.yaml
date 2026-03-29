@@ -1,13 +1,13 @@
 name: wandb
 title: Weights & Biases
 summary: Inspect, compare, and summarize Weights & Biases experiment tracking workflows.
-description: Use when the task involves W&B projects, runs, groups, sweeps, configs, metrics, artifacts, offline sync issues, or selecting the best run under explicit evaluation criteria.
+description: Use when the task involves W&B projects, runs, groups, sweeps, configs, metrics, artifacts, offline sync issues, self-hosted server configuration, or selecting the best run under explicit evaluation criteria.
 codex:
   display_name: Weights & Biases
   short_description: Analyze W&B experiment tracking workflows
   default_prompt: Use $wandb to compare runs, inspect sweeps, and summarize experiment results for this project.
 use_when:
-  - The user mentions wandb, W&B, runs, groups, sweeps, artifacts, entities, or projects.
+  - The user mentions wandb, W&B, runs, groups, sweeps, artifacts, entities, projects, or self-hosted/server configuration.
   - The task is to compare runs, summarize a sweep, explain a dashboard discrepancy, or track down a checkpoint or artifact lineage.
   - The user wants concise experiment summaries grounded in logged metrics, configs, and artifacts.
 avoid_when:
@@ -19,18 +19,22 @@ principles:
   - Make the definition of best run explicit.
   - Prefer selective history pulls over full histories unless the task requires step-level inspection.
   - Treat offline and online W&B usage as separate modes with different debugging steps.
+  - Treat self-hosted server reachability as a separate concern from run logging behavior.
 safety_rules:
   - Prefer read-only inspection and summarization.
   - Do not mutate runs, artifacts, or sweeps unless the user explicitly requests it.
   - State missing metrics, partial histories, and logging inconsistencies as analysis risks.
 expected_outputs:
   - resolved entity or project context
+  - resolved base_url and deployment mode
   - the run set being compared
   - the ranking metric and any constraints
   - a compact run summary, sweep summary, or artifact lineage summary
 commands:
   - name: check_wandb_context.py
     summary: Verify auth and resolve W&B entity or project context.
+  - name: check_wandb_server.py
+    summary: Verify base_url reachability for a default or self-hosted W&B server.
   - name: compare_runs.py
     summary: Compare runs under explicit metrics and filters.
   - name: summarize_sweep.py
@@ -46,7 +50,18 @@ references:
     summary: Metric choice, ranking discipline, and common comparison pitfalls.
   - path: references/reporting.md
     summary: Templates for concise W&B experiment summaries.
+  - path: references/self-hosted.md
+    summary: Base URL, self-hosted deployment, and server-reachability guidance.
 workflows:
+  - name: Verify a server
+    helpers:
+      - check_wandb_context.py
+      - check_wandb_server.py
+    steps:
+      - Resolve entity, project, mode, and base_url from the environment or explicit overrides.
+      - Probe the configured base URL separately from any training code.
+      - Confirm whether the deployment is the default cloud endpoint or a self-hosted server.
+      - Only debug online logging after the server itself is reachable.
   - name: Compare runs
     helpers:
       - check_wandb_context.py
