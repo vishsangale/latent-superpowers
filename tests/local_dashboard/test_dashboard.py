@@ -79,6 +79,25 @@ def test_index_runs_mixed_sources(ablation_store: Path, wandb_store: Path) -> No
     assert "agent.lr" in payload["available_variant_keys"]
 
 
+def test_index_runs_results_root(workspace_results_root: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INDEX_SCRIPT),
+            "--results-root",
+            str(workspace_results_root),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "workspace"
+    assert payload["default_project"] == "recsys"
+    assert payload["projects"][0]["name"] == "recsys"
+
+
 def test_dashboard_endpoints_and_refresh(ablation_store: Path, wandb_store: Path) -> None:
     port = _pick_port()
     process = subprocess.Popen(
@@ -170,6 +189,41 @@ def test_dashboard_endpoints_and_refresh(ablation_store: Path, wandb_store: Path
         process.wait(timeout=5)
 
 
+def test_dashboard_workspace_results_root(workspace_results_root: Path) -> None:
+    port = _pick_port()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(SERVER_SCRIPT),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--results-root",
+            str(workspace_results_root),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        _wait_for_server(port)
+        workspace = _get_json(port, "/api/workspace")
+        summary = _get_json(port, "/api/summary?project=recsys")
+        runs = _get_json(port, "/api/runs?project=recsys")
+        compare = _get_json(port, "/api/compare?project=recsys&metric=avg_reward&direction=max&variant_key=agent.lr")
+
+        assert workspace["mode"] == "workspace"
+        assert workspace["projects"][0]["name"] == "recsys"
+        assert summary["project_name"] == "recsys"
+        assert summary["run_count"] == 4
+        assert len(runs["runs"]) == 4
+        assert compare["project_name"] == "recsys"
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
 def test_dashboard_warns_on_non_loopback_host(ablation_store: Path) -> None:
     port = _pick_port()
     process = subprocess.Popen(
@@ -238,6 +292,7 @@ def test_dashboard_browser_dom(ablation_store: Path) -> None:
         ).stdout
         assert "Local Experiment Dashboard" in dom
         assert "Source Health" in dom
+        assert "Workspace Projects" in dom
         assert "run_a" in dom
         assert "Tradeoff View" in dom
     finally:

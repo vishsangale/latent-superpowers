@@ -26,6 +26,11 @@ from local_run_utils import (  # type: ignore[import-not-found]
     run_to_dict,
     varying_param_values,
 )
+from workspace_results_utils import (  # type: ignore[import-not-found]
+    ProjectManifest,
+    discover_project_manifests,
+    manifest_to_dict,
+)
 
 
 TEXT_SUFFIXES = {
@@ -124,6 +129,9 @@ def _source_detail(
 
 def load_dashboard_state(
     *,
+    project_name: str | None = None,
+    repo_root: str | None = None,
+    project_results_dir: str | None = None,
     mlflow_uri: str | None,
     mlflow_experiment_name: str | None,
     mlflow_experiment_id: str | None,
@@ -155,7 +163,7 @@ def load_dashboard_state(
                     },
                 )
             )
-        except Exception as exc:  # pragma: no cover - exercised in CLI usage
+        except Exception as exc:  # pragma: no cover
             warning = f"Failed to load MLflow runs: {exc}"
             warnings.append(warning)
             source_details.append(
@@ -191,7 +199,7 @@ def load_dashboard_state(
                     },
                 )
             )
-        except Exception as exc:  # pragma: no cover - exercised in CLI usage
+        except Exception as exc:  # pragma: no cover
             warning = f"Failed to load offline W&B runs: {exc}"
             warnings.append(warning)
             source_details.append(
@@ -209,6 +217,9 @@ def load_dashboard_state(
 
     runs.sort(key=lambda run: ((run.start_time or 0), run.run_id), reverse=True)
     return {
+        "project_name": project_name or mlflow_experiment_name or wandb_project,
+        "repo_root": repo_root,
+        "project_results_dir": project_results_dir,
         "sources": [detail["source"] for detail in source_details if detail["run_count"] > 0],
         "source_details": source_details,
         "warnings": warnings,
@@ -223,6 +234,9 @@ def load_dashboard_state(
 
 def serializable_state(state: dict[str, Any]) -> dict[str, Any]:
     return {
+        "project_name": state.get("project_name"),
+        "repo_root": state.get("repo_root"),
+        "project_results_dir": state.get("project_results_dir"),
         "sources": state["sources"],
         "source_details": state["source_details"],
         "warnings": state["warnings"],
@@ -233,6 +247,112 @@ def serializable_state(state: dict[str, Any]) -> dict[str, Any]:
         "timestamps": state["timestamps"],
         "runs": [safe_run_to_dict(run) for run in state["runs"]],
     }
+
+
+def _project_summary(manifest: ProjectManifest, state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": manifest.name,
+        "repo_root": manifest.repo_root,
+        "project_results_dir": manifest.project_results_dir,
+        "manifest": manifest_to_dict(manifest),
+        "run_count": state["run_count"],
+        "sources": state["sources"],
+        "source_details": state["source_details"],
+        "warnings": state["warnings"],
+        "status_counts": state["status_counts"],
+        "available_metrics": state["available_metrics"],
+        "timestamps": state["timestamps"],
+    }
+
+
+def load_workspace_state(*, results_root: str) -> dict[str, Any]:
+    manifests = discover_project_manifests(results_root)
+    project_states: dict[str, dict[str, Any]] = {}
+    project_summaries: list[dict[str, Any]] = []
+    warnings: list[str] = []
+
+    for manifest in manifests:
+        project_state = load_dashboard_state(
+            project_name=manifest.name,
+            repo_root=manifest.repo_root,
+            project_results_dir=manifest.project_results_dir,
+            mlflow_uri=manifest.mlflow_tracking_uri,
+            mlflow_experiment_name=manifest.mlflow_experiment_name,
+            mlflow_experiment_id=None,
+            wandb_paths=manifest.wandb_paths,
+            wandb_project=manifest.wandb_project,
+            wandb_group=None,
+        )
+        project_states[manifest.name] = project_state
+        project_summaries.append(_project_summary(manifest, project_state))
+
+    if not manifests:
+        warnings.append(f"No project manifests found under {results_root}.")
+
+    default_project = project_summaries[0]["name"] if project_summaries else None
+    return {
+        "mode": "workspace",
+        "results_root": str(Path(results_root).expanduser().resolve()),
+        "warnings": warnings,
+        "projects": project_summaries,
+        "project_states": project_states,
+        "default_project": default_project,
+    }
+
+
+def workspace_payload(state: dict[str, Any]) -> dict[str, Any]:
+    if state.get("mode") == "workspace":
+        return {
+            "mode": "workspace",
+            "results_root": state["results_root"],
+            "warnings": state["warnings"],
+            "projects": state["projects"],
+            "default_project": state["default_project"],
+        }
+    project_name = state.get("project_name") or "current"
+    return {
+        "mode": "single",
+        "results_root": None,
+        "warnings": state.get("warnings", []),
+        "projects": [
+            {
+                "name": project_name,
+                "repo_root": state.get("repo_root"),
+                "project_results_dir": state.get("project_results_dir"),
+                "manifest": None,
+                "run_count": state["run_count"],
+                "sources": state["sources"],
+                "source_details": state["source_details"],
+                "warnings": state["warnings"],
+                "status_counts": state["status_counts"],
+                "available_metrics": state["available_metrics"],
+                "timestamps": state["timestamps"],
+            }
+        ],
+        "default_project": project_name,
+    }
+
+
+def resolve_project_state(state: dict[str, Any], project_name: str | None = None) -> dict[str, Any]:
+    if state.get("mode") != "workspace":
+        return state
+    selected = project_name or state.get("default_project")
+    if selected and selected in state["project_states"]:
+        return state["project_states"][selected]
+    if state["project_states"]:
+        first_key = next(iter(state["project_states"]))
+        return state["project_states"][first_key]
+    return load_dashboard_state(
+        project_name=project_name,
+        repo_root=None,
+        project_results_dir=None,
+        mlflow_uri=None,
+        mlflow_experiment_name=None,
+        mlflow_experiment_id=None,
+        wandb_paths=None,
+        wandb_project=None,
+        wandb_group=None,
+    )
 
 
 def filtered_runs(
@@ -283,8 +403,10 @@ def grouped_compare(
 ) -> list[dict[str, Any]]:
     runs = filtered_runs(state, source=source, search=search, run_ids=run_ids)
     rows = grouped_payload(group_runs(runs, variant_keys), metric, direction=direction)
+    run_lookup = {run.run_id: run for run in runs}
     for row in rows:
-        row["runs"] = [safe_run_to_dict(run) for run in runs if run.run_id in {item["run_id"] for item in row["runs"]}]
+        row_ids = {item["run_id"] for item in row["runs"]}
+        row["runs"] = [safe_run_to_dict(run_lookup[run_id]) for run_id in row_ids if run_id in run_lookup]
     return rows
 
 
@@ -329,13 +451,14 @@ def list_artifacts(state: dict[str, Any], run_id: str) -> dict[str, Any]:
             if not path.is_file():
                 continue
             stat = path.stat()
+            kind = _artifact_kind(path)
             artifacts.append(
                 {
                     "path": str(path.relative_to(root)),
-                    "kind": _artifact_kind(path),
+                    "kind": kind,
                     "size_bytes": stat.st_size,
                     "modified_time": stat.st_mtime,
-                    "previewable": _artifact_kind(path) in {"image", "text"},
+                    "previewable": kind in {"image", "text"},
                 }
             )
     return {
@@ -350,9 +473,8 @@ def read_artifact_preview(state: dict[str, Any], run_id: str, relative_path: str
     if run is None:
         return {"run_id": run_id, "path": relative_path, "error": "unknown run"}
 
-    root = _safe_artifact_path(run.artifact_root)
     target = _safe_artifact_path(run.artifact_root, relative_path)
-    if root is None or target is None or not target.is_file():
+    if target is None or not target.is_file():
         return {"run_id": run_id, "path": relative_path, "error": "artifact not found"}
 
     kind = _artifact_kind(target)
@@ -388,14 +510,13 @@ HTML = """<!doctype html>
   <title>Local Experiment Dashboard</title>
   <style>
     :root {
-      --bg: #f3ebdf;
+      --bg: #f4eee2;
+      --ink: #1a1510;
+      --muted: #6d6257;
       --paper: #fffdf8;
       --paper-2: #fff7ef;
-      --ink: #181410;
-      --muted: #6d6257;
       --line: #ddcfbc;
       --accent: #b84c17;
-      --accent-2: #174c73;
       --good: #1f7a4d;
       --good-soft: #dff2e7;
       --warn: #9b5b00;
@@ -411,26 +532,16 @@ HTML = """<!doctype html>
       font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(255, 255, 255, 0.78), rgba(243, 235, 223, 0) 32%),
+        radial-gradient(circle at top left, rgba(255,255,255,0.78), rgba(244,238,226,0) 32%),
         linear-gradient(180deg, #f6efe4 0%, var(--bg) 100%);
     }
     .page {
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 28px 22px 42px;
-    }
-    .hero, .layout {
       display: grid;
-      gap: 18px;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 100vh;
+      gap: 20px;
+      padding: 20px;
     }
-    .hero {
-      grid-template-columns: 1.3fr 0.9fr;
-      margin-bottom: 18px;
-    }
-    .layout {
-      grid-template-columns: 1.45fr 0.95fr;
-    }
-    .stack { display: grid; gap: 18px; }
     .panel {
       background: var(--paper);
       border: 1px solid var(--line);
@@ -438,23 +549,17 @@ HTML = """<!doctype html>
       box-shadow: var(--shadow);
     }
     .card { padding: 18px; }
-    .hero-main {
-      padding: 22px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-height: 208px;
-      background:
-        linear-gradient(140deg, rgba(184, 76, 23, 0.11), rgba(255,255,255,0) 52%),
-        linear-gradient(180deg, #fffdf8, #fff7ef);
+    .sidebar {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+      position: sticky;
+      top: 20px;
+      max-height: calc(100vh - 40px);
     }
-    .hero-side {
-      padding: 18px;
+    .stack, .project-list, .health-list, .compare-list, .short-grid, .artifact-list, .kv-table {
       display: grid;
       gap: 12px;
-      background:
-        linear-gradient(160deg, rgba(23, 76, 115, 0.08), rgba(255,255,255,0) 46%),
-        var(--paper);
     }
     .eyebrow {
       color: var(--accent);
@@ -464,65 +569,90 @@ HTML = """<!doctype html>
       margin-bottom: 10px;
     }
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 36px; line-height: 1.05; margin-bottom: 12px; }
-    h2 { font-size: 20px; }
-    .hero-copy, .section-copy {
+    h1 { font-size: 32px; line-height: 1.05; margin-bottom: 12px; }
+    h2 { font-size: 19px; }
+    .copy, .muted, .tiny {
       color: var(--muted);
-      line-height: 1.55;
-      font-size: 13px;
+      line-height: 1.5;
     }
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: end;
-      gap: 16px;
-      margin-bottom: 14px;
-    }
-    .hero-foot, .toggle-row, .status-line, .detail-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .source-pill, .chip, .badge, .tab {
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      padding: 7px 11px;
-      font-size: 12px;
-      background: rgba(255,255,255,0.88);
-      cursor: pointer;
-    }
-    .source-pill.active, .chip.active, .tab.active {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-    }
-    .badge.info { background: white; }
-    .badge.warn { background: var(--warn-soft); border-color: #f1d39d; color: var(--warn); }
-    .badge.error { background: var(--danger-soft); border-color: #efc6c6; color: var(--danger); }
-    .badge.good { background: var(--good-soft); border-color: #cbe4d6; color: var(--good); }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .stat, .mini-stat, .short-card, .health-item, .variant-row, .artifact-item, .kv-row {
+    .tiny { font-size: 12px; }
+    .project-card, .stat, .health-item, .compare-row, .short-card, .artifact-item, .kv-row {
       border: 1px solid var(--line);
       border-radius: 14px;
       background: var(--paper-2);
     }
-    .stat, .mini-stat, .short-card, .health-item { padding: 12px; }
-    .stat .label, .mini-stat .label {
+    .project-card, .stat, .health-item, .compare-row, .short-card, .artifact-item { padding: 12px; }
+    .project-card.active {
+      background: linear-gradient(135deg, rgba(184,76,23,0.12), rgba(255,255,255,0.85));
+      border-color: var(--accent);
+    }
+    .project-button {
+      all: unset;
+      display: block;
+      width: 100%;
+      cursor: pointer;
+    }
+    .project-name { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stat .label {
       color: var(--muted);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       margin-bottom: 6px;
     }
-    .stat .value { font-size: 28px; font-weight: 700; line-height: 1; }
-    .mini-stat .value { font-size: 16px; font-weight: 700; }
+    .stat .value { font-size: 26px; font-weight: 700; line-height: 1; }
+    .main { display: grid; gap: 18px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+    }
+    .hero-main, .hero-side { padding: 22px; }
+    .hero-main {
+      background:
+        linear-gradient(140deg, rgba(184, 76, 23, 0.11), rgba(255,255,255,0) 52%),
+        linear-gradient(180deg, #fffdf8, #fff7ef);
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .hero-side {
+      background:
+        linear-gradient(160deg, rgba(23,76,115,0.08), rgba(255,255,255,0) 46%),
+        var(--paper);
+    }
+    .chip-row, .status-row, .toolbar, .detail-tabs, .artifact-actions, .inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .chip, .badge, .source-pill, .tab {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 7px 11px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.9);
+      cursor: pointer;
+    }
+    .chip.active, .source-pill.active, .tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .badge.info { background: white; }
+    .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: #f1d39d; }
+    .badge.error { background: var(--danger-soft); color: var(--danger); border-color: #efc6c6; }
+    .badge.good { background: var(--good-soft); color: var(--good); border-color: #cbe4d6; }
     .controls {
       display: grid;
-      grid-template-columns: 1.2fr 0.85fr 0.75fr 0.6fr 1.1fr 0.9fr auto;
+      grid-template-columns: 1.15fr 0.9fr 0.8fr 0.6fr 1.05fr 0.8fr auto;
       gap: 10px;
       margin-bottom: 12px;
     }
@@ -533,14 +663,11 @@ HTML = """<!doctype html>
       padding: 10px 12px;
       border: 1px solid var(--line);
     }
-    input, select {
-      background: white;
-      color: var(--ink);
-    }
+    input, select { background: white; color: var(--ink); }
     button {
       background: var(--accent);
-      border-color: var(--accent);
       color: white;
+      border-color: var(--accent);
       cursor: pointer;
       font-weight: 700;
     }
@@ -550,28 +677,20 @@ HTML = """<!doctype html>
       border-color: var(--line);
       font-weight: 600;
     }
-    .toolbar {
+    .layout {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      align-items: center;
+      grid-template-columns: 1.45fr 0.95fr;
+      gap: 18px;
     }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 14px;
     }
-    .health-list, .compare-list, .short-grid, .artifact-list, .kv-table {
-      display: grid;
-      gap: 10px;
-    }
-    .health-item strong, .short-card strong, .variant-label { font-size: 14px; }
-    .tiny, .muted { color: var(--muted); font-size: 12px; line-height: 1.45; }
     .table-wrap { overflow: auto; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
     th, td {
       padding: 10px 8px;
       border-bottom: 1px solid #efe4d5;
@@ -600,14 +719,6 @@ HTML = """<!doctype html>
       border-radius: 999px;
       background: linear-gradient(90deg, var(--accent), #e68b4c);
     }
-    .variant-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: baseline;
-    }
-    .variant-metric { color: var(--good); font-weight: 700; white-space: nowrap; }
-    .variant-meta { color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
     .winner {
       border: 1px solid #cbe4d6;
       background: var(--good-soft);
@@ -615,17 +726,28 @@ HTML = """<!doctype html>
       padding: 14px;
       margin-bottom: 12px;
     }
-    .winner strong { display: block; font-size: 18px; margin-bottom: 4px; }
-    .empty {
-      color: var(--muted);
-      padding: 12px 0;
-      font-size: 13px;
+    .viz-shell, .summary-shell, .preview-shell {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbf7ef;
+      padding: 12px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      overflow: auto;
     }
+    .viz-svg {
+      width: 100%;
+      min-height: 320px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .short-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .detail-hero {
       border: 1px solid var(--line);
       border-radius: 14px;
       padding: 14px;
-      background: linear-gradient(140deg, rgba(23, 76, 115, 0.05), rgba(255,255,255,0));
+      background: linear-gradient(140deg, rgba(23,76,115,0.05), rgba(255,255,255,0));
       margin-bottom: 12px;
     }
     .detail-grid {
@@ -641,286 +763,218 @@ HTML = """<!doctype html>
       padding: 10px 12px;
       font-size: 12px;
     }
-    .kv-key { color: var(--muted); word-break: break-word; }
-    .kv-value { word-break: break-word; }
-    .artifact-item {
-      padding: 10px 12px;
-      font-size: 12px;
-      display: grid;
-      gap: 8px;
-    }
-    .artifact-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: start;
-    }
-    .artifact-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .preview-shell, .summary-shell {
-      border: 1px solid var(--line);
-      background: #fbf7ef;
-      border-radius: 14px;
-      padding: 12px;
-      white-space: pre-wrap;
-      font-size: 12px;
-      max-height: 320px;
-      overflow: auto;
-    }
     .preview-image {
       max-width: 100%;
       border-radius: 12px;
       border: 1px solid var(--line);
       background: white;
     }
-    .short-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+    .empty { color: var(--muted); padding: 12px 0; font-size: 13px; }
+    @media (max-width: 1400px) {
+      .page { grid-template-columns: 1fr; }
+      .sidebar { position: static; max-height: none; }
     }
-    .inline-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-    .short-card .title {
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .compare-table {
-      margin-top: 12px;
-      border-top: 1px solid #efe4d5;
-      padding-top: 10px;
-    }
-    .viz-shell {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: linear-gradient(180deg, #fffdf8, #fff7ef);
-      padding: 12px;
-    }
-    .viz-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    .viz-svg {
-      width: 100%;
-      min-height: 320px;
-      background: white;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-    }
-    .rollup-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    @media (max-width: 1240px) {
+    @media (max-width: 1180px) {
       .hero, .layout { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 980px) {
       .controls { grid-template-columns: 1fr 1fr; }
-      .grid-2, .detail-grid, .short-grid, .rollup-grid { grid-template-columns: 1fr; }
+      .stats, .detail-grid, .short-grid { grid-template-columns: 1fr 1fr; }
     }
-    @media (max-width: 640px) {
-      .page { padding: 16px 12px 28px; }
-      .controls { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: 1fr; }
+    @media (max-width: 760px) {
+      .page { padding: 12px; }
+      .controls, .stats, .detail-grid, .short-grid { grid-template-columns: 1fr; }
       .kv-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <div class="page">
-    <section class="hero">
-      <section class="panel hero-main">
-        <div>
-          <div class="eyebrow">Local Research Surface</div>
-          <h1>Local Experiment Dashboard</h1>
-          <p class="hero-copy">
-            A local-first dashboard for MLflow and offline W&amp;B runs. Compare variants with explicit metric direction,
-            shortlist candidate runs, inspect provenance, preview artifacts, and refresh the index without leaving the machine.
-          </p>
-        </div>
-        <div class="hero-foot" id="sourceTabs"></div>
+    <aside class="sidebar">
+      <section class="panel card">
+        <div class="eyebrow">Workspace Scope</div>
+        <h2>Projects</h2>
+        <p class="copy" style="margin-top:8px;">Select one project on the left. All views on the right are scoped only to that project.</p>
+        <div class="summary-shell" id="workspaceMeta" style="margin-top:12px;">Loading workspace...</div>
       </section>
-      <section class="panel hero-side">
+      <section class="panel card">
         <div class="section-head">
           <div>
-            <h2>At A Glance</h2>
-            <p class="section-copy">Current slice under the active filters and compare direction.</p>
+            <h2>Workspace Projects</h2>
+            <p class="copy">Discovered from workspace results manifests.</p>
           </div>
         </div>
-        <div class="stats">
-          <div class="stat"><div class="label">Visible Runs</div><div class="value" id="statRuns">-</div></div>
-          <div class="stat"><div class="label">Loaded Sources</div><div class="value" id="statSources">-</div></div>
-          <div class="stat"><div class="label">Best Metric</div><div class="value" id="statTopMetric">-</div></div>
-          <div class="stat"><div class="label">Missing Metric</div><div class="value" id="statMissingMetric">-</div></div>
-        </div>
-        <div class="status-line" id="statusBadges"></div>
+        <div class="project-list" id="projectList"></div>
       </section>
-    </section>
+    </aside>
 
-    <div class="layout">
-      <div class="stack">
-        <section class="panel card">
+    <main class="main">
+      <section class="hero">
+        <section class="panel hero-main">
+          <div>
+            <div class="eyebrow">Local Research Surface</div>
+            <h1>Local Experiment Dashboard</h1>
+            <p class="copy">
+              Project-scoped local dashboard over MLflow, offline W&amp;B, workspace run folders, artifacts, tradeoffs, and shortlist review.
+            </p>
+          </div>
+          <div class="chip-row" id="sourceTabs"></div>
+        </section>
+        <section class="panel hero-side">
           <div class="section-head">
             <div>
-              <h2>Research Filters</h2>
-              <p class="section-copy">Use a real metric, explicit ranking direction, and one or more grouping keys.</p>
+              <h2 id="projectTitle">Loading project...</h2>
+              <p class="copy" id="projectSubtitle">Preparing current project view.</p>
             </div>
           </div>
-          <div class="controls">
-            <input id="runSearch" placeholder="Search run name, id, group, project, params, or tags">
-            <input id="projectInput" placeholder="Project or experiment">
-            <input id="metricInput" placeholder="Metric key">
-            <select id="metricSelect"></select>
-            <select id="directionSelect">
-              <option value="max">max</option>
-              <option value="min">min</option>
-            </select>
-            <input id="variantInput" placeholder="Variant keys, comma separated">
-            <select id="statusSelect"></select>
-            <button id="refreshButton">Reload Data</button>
+          <div class="stats">
+            <div class="stat"><div class="label">Visible Runs</div><div class="value" id="statRuns">-</div></div>
+            <div class="stat"><div class="label">Loaded Sources</div><div class="value" id="statSources">-</div></div>
+            <div class="stat"><div class="label">Best Metric</div><div class="value" id="statTopMetric">-</div></div>
+            <div class="stat"><div class="label">Missing Metric</div><div class="value" id="statMissingMetric">-</div></div>
           </div>
-          <div class="grid-2">
-            <div>
-              <div class="tiny" style="margin-bottom:8px;">Suggested Metrics</div>
-              <div class="toggle-row" id="metricChips"></div>
-            </div>
-            <div>
-              <div class="tiny" style="margin-bottom:8px;">Suggested Variant Keys</div>
-              <div class="toggle-row" id="quickVariantRow"></div>
-            </div>
-          </div>
+          <div class="status-row" id="statusBadges"></div>
         </section>
+      </section>
 
-        <section class="panel card">
-          <div class="toolbar">
-            <div>
-              <h2>Variant Compare</h2>
-              <p class="section-copy">Backend-driven grouped comparison with count, spread, and drilldown into cohort members.</p>
-            </div>
-            <div class="status-line">
-              <button class="secondary" id="exportCompareButton">Export Compare</button>
-              <button class="secondary" id="clearGroupButton">Clear Cohort Filter</button>
-            </div>
+      <section class="panel card">
+        <div class="section-head">
+          <div>
+            <h2>Research Filters</h2>
+            <p class="copy">Operate inside the selected project only. Use an explicit metric direction and grouping key.</p>
           </div>
-          <div class="winner" id="compareWinner">Loading grouped comparison...</div>
-          <div class="compare-list" id="compareList"></div>
-        </section>
+        </div>
+        <div class="controls">
+          <input id="runSearch" placeholder="Search run name, id, group, params, or tags">
+          <input id="metricInput" placeholder="Metric key">
+          <select id="metricSelect"></select>
+          <select id="directionSelect">
+            <option value="max">max</option>
+            <option value="min">min</option>
+          </select>
+          <input id="variantInput" placeholder="Variant keys, comma separated">
+          <select id="statusSelect"></select>
+          <button id="refreshButton">Reload Workspace</button>
+        </div>
+        <div class="toolbar">
+          <div class="chip-row" id="metricChips"></div>
+          <div class="chip-row" id="quickVariantRow"></div>
+        </div>
+      </section>
 
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Tradeoff View</h2>
-              <p class="section-copy">Scatter the active metric against a second metric for the current filtered slice.</p>
+      <div class="layout">
+        <div class="stack">
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Variant Compare</h2>
+                <p class="copy">Grouped comparison for the current project and filtered slice.</p>
+              </div>
+              <div class="toolbar">
+                <button class="secondary" id="exportCompareButton">Export Compare</button>
+                <button class="secondary" id="clearGroupButton">Clear Cohort</button>
+              </div>
             </div>
-            <select id="secondaryMetricSelect" style="max-width:260px;"></select>
-          </div>
-          <div class="viz-shell">
-            <div class="viz-head">
-              <div class="tiny">X: active metric · Y: secondary metric</div>
-              <div class="tiny" id="tradeoffMeta">Loading tradeoff view...</div>
-            </div>
-            <div id="tradeoffShell"></div>
-          </div>
-        </section>
+            <div class="winner" id="compareWinner">Loading grouped comparison...</div>
+            <div class="compare-list" id="compareList"></div>
+          </section>
 
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Runs</h2>
-              <p class="section-copy">Sorted by the active metric and direction. Pin up to three runs for side-by-side review.</p>
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Tradeoff View</h2>
+                <p class="copy">Scatter the active metric against a second metric inside the current project slice.</p>
+              </div>
+              <select id="secondaryMetricSelect" style="max-width:260px;"></select>
             </div>
-            <button class="secondary" id="exportRunsButton">Export Runs</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Run</th>
-                  <th>Source / Status</th>
-                  <th>Active Metric</th>
-                  <th>Context</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="runsTableBody"></tbody>
-            </table>
-          </div>
-          <div id="runsEmpty" class="empty" style="display:none;">No runs match the current filters.</div>
-        </section>
+            <div class="viz-shell">
+              <div class="toolbar" style="margin-bottom:10px;">
+                <div class="tiny">X: active metric · Y: secondary metric</div>
+                <div class="tiny" id="tradeoffMeta">Loading tradeoff view...</div>
+              </div>
+              <div id="tradeoffShell"></div>
+            </div>
+          </section>
+
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Runs</h2>
+                <p class="copy">Ranked inside the selected project. Pin candidates and open a run for inspection.</p>
+              </div>
+              <button class="secondary" id="exportRunsButton">Export Runs</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Run</th>
+                    <th>Source / Status</th>
+                    <th>Active Metric</th>
+                    <th>Workspace Context</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="runsTableBody"></tbody>
+              </table>
+            </div>
+            <div id="runsEmpty" class="empty" style="display:none;">No runs match the current filters.</div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Source Health</h2>
+                <p class="copy">Backend coverage, warnings, and status mix for the selected project.</p>
+              </div>
+            </div>
+            <div class="health-list" id="healthList"></div>
+          </section>
+
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Shortlist Compare</h2>
+                <p class="copy">Pinned runs side by side with differing params only.</p>
+              </div>
+            </div>
+            <div class="short-grid" id="shortlistGrid"></div>
+            <div class="summary-shell" id="shortlistDiff">Pin up to three runs to compare differing params.</div>
+          </section>
+
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Run Inspector</h2>
+                <p class="copy">Selected run detail, artifacts, params, tags, and local path context.</p>
+              </div>
+            </div>
+            <div id="selectedRunShell"><div class="empty">Select a run from the table.</div></div>
+          </section>
+
+          <section class="panel card">
+            <div class="section-head">
+              <div>
+                <h2>Summary Debug</h2>
+                <p class="copy">Compact project summary payload for sanity checks.</p>
+              </div>
+            </div>
+            <div class="summary-shell" id="summaryShell">Loading...</div>
+          </section>
+        </div>
       </div>
-
-      <div class="stack">
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Source Health</h2>
-              <p class="section-copy">Loaded backends, run counts, warnings, and status coverage.</p>
-            </div>
-          </div>
-          <div class="health-list" id="healthList"></div>
-        </section>
-
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Project Rollups</h2>
-              <p class="section-copy">Aggregate the current filtered slice by project or experiment.</p>
-            </div>
-          </div>
-          <div class="rollup-grid" id="rollupGrid"></div>
-        </section>
-
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Shortlist Compare</h2>
-              <p class="section-copy">Pinned runs for side-by-side review of active metric, provenance, and differing params.</p>
-            </div>
-          </div>
-          <div class="short-grid" id="shortlistGrid"></div>
-          <div class="compare-table" id="shortlistDiff"></div>
-        </section>
-
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Run Inspector</h2>
-              <p class="section-copy">Focused detail for the currently selected run.</p>
-            </div>
-          </div>
-          <div id="selectedRunShell"><div class="empty">Select a run from the table.</div></div>
-        </section>
-
-        <section class="panel card">
-          <div class="section-head">
-            <div>
-              <h2>Summary Debug</h2>
-              <p class="section-copy">Compact backend snapshot for sanity checks and schema debugging.</p>
-            </div>
-          </div>
-          <div class="summary-shell" id="summaryShell">Loading...</div>
-        </section>
-      </div>
-    </div>
+    </main>
   </div>
   <script>
-    let allRuns = [];
-    let summaryData = null;
+    let workspaceData = null;
+    let projectCache = {};
+    let currentProject = null;
     let selectedSource = 'all';
     let selectedRunId = null;
     let activeTab = 'metrics';
     let activeGroupRunIds = null;
     let pinnedRunIds = [];
     let activeArtifactPath = null;
-    let activeBaselineLabel = null;
 
     async function getJson(url, options) {
       const response = await fetch(url, options);
@@ -932,7 +986,7 @@ HTML = """<!doctype html>
     }
 
     function escapeHtml(value) {
-      return String(value)
+      return String(value ?? '')
         .replaceAll('&', '&amp;')
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;')
@@ -945,23 +999,33 @@ HTML = """<!doctype html>
       return Number(value).toFixed(3);
     }
 
-    function formatCount(value) {
-      if (value === null || value === undefined) return '-';
-      return String(value);
-    }
-
     function formatTimestamp(value) {
       if (!value) return '-';
       const millis = Number(value) < 10_000_000_000 ? Number(value) * 1000 : Number(value);
       return new Date(millis).toLocaleString();
     }
 
-    function activeMetric() {
-      return document.getElementById('metricInput').value.trim() || 'avg_reward';
+    function downloadJson(filename, payload) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(href);
     }
 
-    function activeProject() {
-      return document.getElementById('projectInput').value.trim().toLowerCase();
+    function currentSummary() {
+      return projectCache[currentProject] ? projectCache[currentProject].summary : null;
+    }
+
+    function currentRuns() {
+      const payload = projectCache[currentProject];
+      return payload ? payload.runs.runs : [];
+    }
+
+    function activeMetric() {
+      return document.getElementById('metricInput').value.trim() || 'avg_reward';
     }
 
     function activeDirection() {
@@ -986,26 +1050,92 @@ HTML = """<!doctype html>
       return document.getElementById('secondaryMetricSelect').value || '';
     }
 
-    function downloadJson(filename, payload) {
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(link.href);
+    function selectedProjectMeta() {
+      return ((workspaceData && workspaceData.projects) || []).find(project => project.name === currentProject) || null;
+    }
+
+    async function loadWorkspace(forceProjectReload=false) {
+      workspaceData = await getJson('/api/workspace');
+      renderWorkspaceMeta();
+      renderProjectRail();
+      const defaultProject = currentProject && (workspaceData.projects || []).some(project => project.name === currentProject)
+        ? currentProject
+        : workspaceData.default_project || (workspaceData.projects && workspaceData.projects[0] && workspaceData.projects[0].name);
+      if (defaultProject) {
+        await selectProject(defaultProject, forceProjectReload);
+      }
+    }
+
+    async function selectProject(projectName, force=false) {
+      currentProject = projectName;
+      selectedSource = 'all';
+      activeGroupRunIds = null;
+      activeArtifactPath = null;
+      if (!projectCache[projectName] || force) {
+        const [summary, runs] = await Promise.all([
+          getJson('/api/summary?project=' + encodeURIComponent(projectName)),
+          getJson('/api/runs?project=' + encodeURIComponent(projectName)),
+        ]);
+        projectCache[projectName] = {summary, runs};
+      }
+      const summary = currentSummary();
+      const metrics = summary.available_metrics || [];
+      if (!document.getElementById('metricInput').value && metrics.length) {
+        document.getElementById('metricInput').value = metrics[0];
+      }
+      if (!document.getElementById('variantInput').value && summary.available_variant_keys && summary.available_variant_keys.length) {
+        document.getElementById('variantInput').value = summary.available_variant_keys[0];
+      }
+      selectedRunId = currentRuns()[0] ? currentRuns()[0].run_id : null;
+      renderProjectRail();
+      await renderAll();
+    }
+
+    function renderWorkspaceMeta() {
+      const root = document.getElementById('workspaceMeta');
+      if (!workspaceData) {
+        root.textContent = 'Loading workspace...';
+        return;
+      }
+      root.textContent = JSON.stringify({
+        mode: workspaceData.mode,
+        results_root: workspaceData.results_root,
+        project_count: (workspaceData.projects || []).length,
+        warnings: workspaceData.warnings || [],
+      }, null, 2);
+    }
+
+    function renderProjectRail() {
+      const root = document.getElementById('projectList');
+      root.innerHTML = '';
+      const projects = (workspaceData && workspaceData.projects) || [];
+      if (!projects.length) {
+        root.innerHTML = '<div class="empty">No projects discovered yet. Point the dashboard at a workspace results root with project manifests.</div>';
+        return;
+      }
+      for (const project of projects) {
+        const shell = document.createElement('div');
+        shell.className = 'project-card' + (project.name === currentProject ? ' active' : '');
+        const warnings = (project.warnings || []).length ? `<div class="badge warn" style="display:inline-flex;margin-top:8px;">${project.warnings.length} warning(s)</div>` : '';
+        shell.innerHTML = `
+          <button class="project-button" type="button">
+            <div class="project-name">${escapeHtml(project.name)}</div>
+            <div class="tiny">${escapeHtml(project.repo_root || project.project_results_dir || 'no repo root')}</div>
+            <div class="tiny" style="margin-top:6px;">${project.run_count} run(s) · ${(project.sources || []).join(', ') || 'no sources'}</div>
+            ${warnings}
+          </button>
+        `;
+        shell.querySelector('button').onclick = async () => {
+          await selectProject(project.name);
+        };
+        root.appendChild(shell);
+      }
     }
 
     function sourceFilteredRuns() {
-      let runs = allRuns.slice();
+      let runs = currentRuns().slice();
       if (selectedSource !== 'all') {
         runs = runs.filter(run => run.source === selectedSource);
-      }
-      const projectNeedle = activeProject();
-      if (projectNeedle) {
-        runs = runs.filter(run => {
-          const haystack = [run.project, run.experiment].filter(Boolean).join(' ').toLowerCase();
-          return haystack.includes(projectNeedle);
-        });
       }
       const status = activeStatus();
       if (status !== 'all') {
@@ -1024,7 +1154,6 @@ HTML = """<!doctype html>
           group: run.group,
           project: run.project,
           experiment: run.experiment,
-          status: run.status,
           params: run.params,
           tags: run.tags,
         }).toLowerCase();
@@ -1049,42 +1178,21 @@ HTML = """<!doctype html>
       return rankedRuns(runs)[0] || null;
     }
 
-    function updateStats(runs) {
-      const metric = activeMetric();
-      const best = topRun(runs);
-      const missingMetric = runs.filter(run => !run.metrics || run.metrics[metric] === undefined).length;
-      document.getElementById('statRuns').textContent = runs.length;
-      document.getElementById('statSources').textContent = selectedSource === 'all'
-        ? (summaryData.sources || []).length
-        : 1;
-      document.getElementById('statTopMetric').textContent = best ? formatMetric(best.metrics[metric]) : '-';
-      document.getElementById('statMissingMetric').textContent = String(missingMetric);
-
-      const badges = document.getElementById('statusBadges');
-      badges.innerHTML = '';
-      const items = [
-        { label: 'view: ' + (selectedSource === 'all' ? 'all sources' : selectedSource), kind: 'info' },
-        activeProject() ? { label: 'project: ' + activeProject(), kind: 'info' } : null,
-        activeStatus() !== 'all' ? { label: 'status: ' + activeStatus(), kind: 'info' } : null,
-        { label: 'metric: ' + metric + ' (' + activeDirection() + ')', kind: 'info' },
-        { label: 'group by: ' + (activeVariantKeys().join(', ') || '<none>'), kind: 'info' },
-        activeGroupRunIds ? { label: 'cohort filter: ' + activeGroupRunIds.length + ' run(s)', kind: 'good' } : null,
-        activeBaselineLabel ? { label: 'baseline: ' + activeBaselineLabel, kind: 'good' } : null,
-        activeSearch() ? { label: 'search active', kind: 'info' } : null,
-        missingMetric ? { label: 'missing metric: ' + missingMetric, kind: 'warn' } : null,
-      ].filter(Boolean);
-      for (const item of items) {
-        const badge = document.createElement('div');
-        badge.className = 'badge ' + item.kind;
-        badge.textContent = item.label;
-        badges.appendChild(badge);
-      }
+    function renderProjectHeader() {
+      const summary = currentSummary();
+      const meta = selectedProjectMeta();
+      document.getElementById('projectTitle').textContent = currentProject || 'No project selected';
+      document.getElementById('projectSubtitle').textContent = meta
+        ? ((meta.repo_root || meta.project_results_dir || '') + ' · ' + ((meta.sources || []).join(', ') || 'no sources'))
+        : 'Preparing current project view.';
+      document.getElementById('summaryShell').textContent = summary ? JSON.stringify(summary, null, 2) : 'No project data loaded.';
     }
 
     function renderSourceTabs() {
       const root = document.getElementById('sourceTabs');
       root.innerHTML = '';
-      const values = ['all', ...(summaryData.sources || [])];
+      const summary = currentSummary();
+      const values = ['all', ...((summary && summary.sources) || [])];
       for (const source of values) {
         const button = document.createElement('button');
         button.className = 'source-pill' + (selectedSource === source ? ' active' : '');
@@ -1092,16 +1200,16 @@ HTML = """<!doctype html>
         button.onclick = async () => {
           selectedSource = source;
           activeGroupRunIds = null;
-          renderSourceTabs();
           await renderAll();
         };
         root.appendChild(button);
       }
     }
 
-    function renderMetricControls(runs) {
+    function renderMetricControls() {
+      const summary = currentSummary();
+      const metrics = (summary && summary.available_metrics) || [];
       const select = document.getElementById('metricSelect');
-      const metrics = summaryData.available_metrics || [];
       const current = activeMetric();
       select.innerHTML = '';
       for (const metric of metrics) {
@@ -1111,14 +1219,15 @@ HTML = """<!doctype html>
         if (metric === current) option.selected = true;
         select.appendChild(option);
       }
-      if (!metrics.includes(current) && current) {
+      if (current && !metrics.includes(current)) {
         const option = document.createElement('option');
         option.value = current;
         option.textContent = current + ' (custom)';
         option.selected = true;
         select.appendChild(option);
       }
-      document.getElementById('metricChips').innerHTML = '';
+      const chips = document.getElementById('metricChips');
+      chips.innerHTML = '';
       for (const metric of metrics.slice(0, 10)) {
         const chip = document.createElement('div');
         chip.className = 'chip' + (metric === current ? ' active' : '');
@@ -1128,14 +1237,32 @@ HTML = """<!doctype html>
           select.value = metric;
           await renderAll();
         };
-        document.getElementById('metricChips').appendChild(chip);
+        chips.appendChild(chip);
+      }
+    }
+
+    function renderVariantChips() {
+      const summary = currentSummary();
+      const root = document.getElementById('quickVariantRow');
+      root.innerHTML = '';
+      const current = activeVariantKeys();
+      for (const key of ((summary && summary.available_variant_keys) || []).slice(0, 12)) {
+        const chip = document.createElement('div');
+        chip.className = 'chip' + (current.length === 1 && current[0] === key ? ' active' : '');
+        chip.textContent = key;
+        chip.onclick = async () => {
+          document.getElementById('variantInput').value = key;
+          await renderAll();
+        };
+        root.appendChild(chip);
       }
     }
 
     function renderStatusControl() {
+      const summary = currentSummary();
       const select = document.getElementById('statusSelect');
       const current = activeStatus();
-      const options = ['all', ...Object.keys(summaryData.status_counts || {})];
+      const options = ['all', ...Object.keys((summary && summary.status_counts) || {})];
       select.innerHTML = '';
       for (const value of options) {
         const option = document.createElement('option');
@@ -1147,67 +1274,111 @@ HTML = """<!doctype html>
     }
 
     function renderSecondaryMetricControl() {
+      const summary = currentSummary();
       const select = document.getElementById('secondaryMetricSelect');
-      const current = activeSecondaryMetric();
-      const options = (summaryData.available_metrics || []).filter(metric => metric !== activeMetric());
+      const metrics = ((summary && summary.available_metrics) || []).filter(metric => metric !== activeMetric());
+      const preferred = metrics[0] || '';
       select.innerHTML = '';
-      const preferred = current && options.includes(current) ? current : (options[0] || '');
-      for (const metric of options) {
+      for (const metric of metrics) {
         const option = document.createElement('option');
         option.value = metric;
         option.textContent = metric;
         if (metric === preferred) option.selected = true;
         select.appendChild(option);
       }
-      if (preferred && select.value !== preferred) {
-        select.value = preferred;
-      }
     }
 
-    function renderVariantChips() {
-      const root = document.getElementById('quickVariantRow');
-      root.innerHTML = '';
-      const current = activeVariantKeys();
-      const keys = summaryData.available_variant_keys || [];
-      for (const key of keys.slice(0, 14)) {
-        const isActive = current.length === 1 && current[0] === key;
-        const chip = document.createElement('div');
-        chip.className = 'chip' + (isActive ? ' active' : '');
-        chip.textContent = key;
-        chip.onclick = async () => {
-          document.getElementById('variantInput').value = key;
-          await renderAll();
-        };
-        root.appendChild(chip);
+    function updateStats(runs) {
+      const summary = currentSummary();
+      const metric = activeMetric();
+      const best = topRun(runs);
+      const missingMetric = runs.filter(run => !run.metrics || run.metrics[metric] === undefined).length;
+      document.getElementById('statRuns').textContent = runs.length;
+      document.getElementById('statSources').textContent = selectedSource === 'all' ? (((summary && summary.sources) || []).length) : 1;
+      document.getElementById('statTopMetric').textContent = best ? formatMetric(best.metrics[metric]) : '-';
+      document.getElementById('statMissingMetric').textContent = String(missingMetric);
+      const badges = document.getElementById('statusBadges');
+      badges.innerHTML = '';
+      const items = [
+        currentProject ? {label: 'project: ' + currentProject, kind: 'good'} : null,
+        {label: 'view: ' + (selectedSource === 'all' ? 'all sources' : selectedSource), kind: 'info'},
+        {label: 'metric: ' + metric + ' (' + activeDirection() + ')', kind: 'info'},
+        activeVariantKeys().length ? {label: 'group by: ' + activeVariantKeys().join(', '), kind: 'info'} : null,
+        activeGroupRunIds ? {label: 'cohort: ' + activeGroupRunIds.length + ' run(s)', kind: 'good'} : null,
+        missingMetric ? {label: 'missing metric: ' + missingMetric, kind: 'warn'} : null,
+      ].filter(Boolean);
+      for (const item of items) {
+        const badge = document.createElement('div');
+        badge.className = 'badge ' + item.kind;
+        badge.textContent = item.label;
+        badges.appendChild(badge);
       }
     }
 
     function renderHealth() {
+      const summary = currentSummary();
       const root = document.getElementById('healthList');
       root.innerHTML = '';
-      const details = summaryData.source_details || [];
-      for (const detail of details) {
+      for (const detail of ((summary && summary.source_details) || [])) {
         const shell = document.createElement('div');
         shell.className = 'health-item';
-        const statusBits = [];
-        for (const [key, value] of Object.entries(detail.status_counts || {})) {
-          statusBits.push(key + ': ' + value);
-        }
+        const statusBits = Object.entries(detail.status_counts || {}).map(([key, value]) => key + ': ' + value).join(' · ');
         shell.innerHTML = `
           <strong>${escapeHtml(detail.source)}</strong>
-          <div class="muted">${detail.run_count} run(s)</div>
-          <div class="tiny">${escapeHtml(statusBits.join(' · ') || 'no runs loaded')}</div>
-          ${detail.warning ? `<div class="badge error" style="margin-top:8px;display:inline-flex;">${escapeHtml(detail.warning)}</div>` : '<div class="badge good" style="margin-top:8px;display:inline-flex;">loaded</div>'}
+          <div class="tiny">${detail.run_count} run(s)</div>
+          <div class="tiny">${escapeHtml(statusBits || 'no runs loaded')}</div>
+          ${detail.warning ? `<div class="badge error" style="display:inline-flex;margin-top:8px;">${escapeHtml(detail.warning)}</div>` : `<div class="badge good" style="display:inline-flex;margin-top:8px;">loaded</div>`}
         `;
         root.appendChild(shell);
       }
-      if ((summaryData.warnings || []).length) {
-        for (const warning of summaryData.warnings) {
-          const shell = document.createElement('div');
-          shell.className = 'health-item';
-          shell.innerHTML = `<strong>warning</strong><div class="tiny">${escapeHtml(warning)}</div>`;
-          root.appendChild(shell);
-        }
+      for (const warning of ((summary && summary.warnings) || [])) {
+        const shell = document.createElement('div');
+        shell.className = 'health-item';
+        shell.innerHTML = `<strong>warning</strong><div class="tiny">${escapeHtml(warning)}</div>`;
+        root.appendChild(shell);
+      }
+    }
+
+    async function renderCompare() {
+      const url = new URL('/api/compare', window.location.origin);
+      url.searchParams.set('project', currentProject);
+      url.searchParams.set('metric', activeMetric());
+      url.searchParams.set('direction', activeDirection());
+      for (const key of activeVariantKeys()) url.searchParams.append('variant_key', key);
+      if (selectedSource !== 'all') url.searchParams.set('source', selectedSource);
+      if (activeSearch()) url.searchParams.set('search', activeSearch());
+      if (activeGroupRunIds) {
+        for (const runId of activeGroupRunIds) url.searchParams.append('run_id', runId);
+      }
+      const payload = await getJson(url.toString());
+      const winner = document.getElementById('compareWinner');
+      const root = document.getElementById('compareList');
+      root.innerHTML = '';
+      if (!payload.rows.length) {
+        winner.innerHTML = '<strong>No grouped compare yet</strong><div class="tiny">Choose a populated metric and at least one useful grouping key.</div>';
+        return;
+      }
+      const best = payload.rows[0];
+      winner.innerHTML = `<strong>${escapeHtml(best.label)}</strong><div class="tiny">${best.count} run(s) · mean ${formatMetric(best.mean)} · best ${formatMetric(best.best)}</div>`;
+      const maxAbsBest = Math.max(...payload.rows.map(row => Math.abs(Number(row.best || 0))), 1e-9);
+      for (const row of payload.rows) {
+        const shell = document.createElement('div');
+        shell.className = 'compare-row';
+        const width = Math.max(6, Math.min(100, Math.abs(Number(row.best || 0)) / maxAbsBest * 100));
+        shell.innerHTML = `
+          <div class="variant-top">
+            <strong>${escapeHtml(row.label)}</strong>
+            <div class="metric-value">${formatMetric(row.best)}</div>
+          </div>
+          <div class="bar-shell"><div class="bar-fill" style="width:${width}%"></div></div>
+          <div class="tiny">${row.count} run(s) · mean ${formatMetric(row.mean)} · std ${formatMetric(row.stddev)}</div>
+          <div class="inline-actions"><button class="secondary" type="button">Focus Cohort</button></div>
+        `;
+        shell.querySelector('button').onclick = async () => {
+          activeGroupRunIds = row.runs.map(run => run.run_id);
+          await renderAll();
+        };
+        root.appendChild(shell);
       }
     }
 
@@ -1230,7 +1401,7 @@ HTML = """<!doctype html>
       const maxX = Math.max(...xValues);
       const minY = Math.min(...yValues);
       const maxY = Math.max(...yValues);
-      const width = 780;
+      const width = 760;
       const height = 320;
       const pad = 38;
       const xSpan = Math.max(maxX - minX, 1e-9);
@@ -1238,504 +1409,235 @@ HTML = """<!doctype html>
       const dots = runs.map(run => {
         const x = pad + ((Number(run.metrics[xMetric]) - minX) / xSpan) * (width - pad * 2);
         const y = height - pad - ((Number(run.metrics[yMetric]) - minY) / ySpan) * (height - pad * 2);
-        const color = run.source === 'wandb-offline' ? '#174c73' : '#b84c17';
-        return `
-          <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="${color}" fill-opacity="0.85" stroke="white" stroke-width="1.5" data-run-id="${escapeHtml(run.run_id)}">
-            <title>${escapeHtml((run.name || run.run_id) + ' · ' + xMetric + '=' + formatMetric(run.metrics[xMetric]) + ' · ' + yMetric + '=' + formatMetric(run.metrics[yMetric]))}</title>
-          </circle>
-        `;
+        return `<g><circle cx="${x}" cy="${y}" r="6" fill="#b84c17" opacity="0.82"></circle><text x="${x + 8}" y="${y - 8}" font-size="11" fill="#6d6257">${escapeHtml(run.name || run.run_id)}</text></g>`;
       }).join('');
-      meta.textContent = runs.length + ' run(s) with both metrics';
+      meta.textContent = runs.length + ' run(s) · X ' + xMetric + ' · Y ' + yMetric;
       root.innerHTML = `
-        <svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="tradeoff scatter plot">
-          <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#cbb9a2" stroke-width="1.5"></line>
-          <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#cbb9a2" stroke-width="1.5"></line>
-          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" fill="#6d6257" font-size="12">${escapeHtml(xMetric)}</text>
-          <text x="16" y="${height / 2}" text-anchor="middle" fill="#6d6257" font-size="12" transform="rotate(-90 16 ${height / 2})">${escapeHtml(yMetric)}</text>
-          <text x="${pad}" y="${height - 16}" fill="#6d6257" font-size="11">${formatMetric(minX)}</text>
-          <text x="${width - pad}" y="${height - 16}" text-anchor="end" fill="#6d6257" font-size="11">${formatMetric(maxX)}</text>
-          <text x="${pad + 4}" y="${pad + 12}" fill="#6d6257" font-size="11">${formatMetric(maxY)}</text>
-          <text x="${pad + 4}" y="${height - pad - 6}" fill="#6d6257" font-size="11">${formatMetric(minY)}</text>
+        <svg class="viz-svg" viewBox="0 0 ${width} ${height}">
+          <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#ddcfbc" />
+          <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#ddcfbc" />
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#6d6257">${escapeHtml(xMetric)}</text>
+          <text x="12" y="${height / 2}" transform="rotate(-90 12 ${height / 2})" text-anchor="middle" font-size="12" fill="#6d6257">${escapeHtml(yMetric)}</text>
           ${dots}
         </svg>
       `;
-      root.querySelectorAll('circle[data-run-id]').forEach(node => {
-        node.style.cursor = 'pointer';
-        node.addEventListener('click', async () => {
-          selectedRunId = node.dataset.runId;
-          activeTab = 'metrics';
-          activeArtifactPath = null;
-          await renderInspector();
-        });
-      });
-    }
-
-    function renderRollups() {
-      const root = document.getElementById('rollupGrid');
-      root.innerHTML = '';
-      const metric = activeMetric();
-      const runs = sourceFilteredRuns();
-      const groups = new Map();
-      for (const run of runs) {
-        const label = run.project || run.experiment || 'unknown';
-        if (!groups.has(label)) groups.set(label, []);
-        groups.get(label).push(run);
-      }
-      const rows = [...groups.entries()]
-        .map(([label, groupRuns]) => {
-          const valid = groupRuns.filter(run => run.metrics && run.metrics[metric] !== undefined);
-          const values = valid.map(run => Number(run.metrics[metric]));
-          return {
-            label,
-            count: groupRuns.length,
-            mean: values.length ? values.reduce((a, b) => a + b, 0) / values.length : null,
-            missing: groupRuns.length - values.length,
-            best: topRun(groupRuns),
-          };
-        })
-        .sort((left, right) => {
-          const leftValue = left.mean === null ? (activeDirection() === 'max' ? -Infinity : Infinity) : left.mean;
-          const rightValue = right.mean === null ? (activeDirection() === 'max' ? -Infinity : Infinity) : right.mean;
-          return activeDirection() === 'max' ? rightValue - leftValue : leftValue - rightValue;
-        });
-      if (!rows.length) {
-        root.innerHTML = '<div class="empty">No project rollups for the current slice.</div>';
-        return;
-      }
-      for (const row of rows.slice(0, 8)) {
-        const shell = document.createElement('div');
-        shell.className = 'health-item';
-        shell.innerHTML = `
-          <strong>${escapeHtml(row.label)}</strong>
-          <div class="tiny">${row.count} run(s) · mean ${formatMetric(row.mean)} · missing ${row.missing}</div>
-          <div class="tiny">best ${escapeHtml(row.best ? (row.best.name || row.best.run_id) : '-')}</div>
-        `;
-        root.appendChild(shell);
-      }
-    }
-
-    async function renderCompare() {
-      const list = document.getElementById('compareList');
-      const winner = document.getElementById('compareWinner');
-      list.innerHTML = '';
-      const metric = activeMetric();
-      const direction = activeDirection();
-      const variantKeys = activeVariantKeys();
-      const scopedRuns = sourceFilteredRuns();
-      if (!variantKeys.length) {
-        winner.textContent = 'Enter at least one variant key to render grouped comparison.';
-        return;
-      }
-      const params = new URLSearchParams({ metric, direction });
-      for (const run of scopedRuns) params.append('run_id', run.run_id);
-      for (const key of variantKeys) params.append('variant_key', key);
-      const payload = await getJson('/api/compare?' + params.toString());
-      const rows = payload.rows || [];
-      if (!rows.length) {
-        winner.textContent = 'No grouped comparison rows match the current filters.';
-        return;
-      }
-
-      const top = rows[0];
-      const missingMetric = top.count - (top.summary.count || 0);
-      winner.innerHTML = `
-        <strong>${escapeHtml(top.label)}</strong>
-        <div class="muted">
-          ${direction === 'max' ? 'Top' : 'Lowest'} grouped ${escapeHtml(metric)} mean ${formatMetric(top.summary.mean)}
-          across ${top.count} run(s), stddev ${formatMetric(top.summary.stddev)}, missing metric in ${missingMetric} run(s).
-        </div>
-      `;
-
-      const numericMeans = rows
-        .map(row => row.summary.mean === null ? null : Number(row.summary.mean))
-        .filter(value => value !== null);
-      const minMean = numericMeans.length ? Math.min(...numericMeans) : 0;
-      const maxMean = numericMeans.length ? Math.max(...numericMeans) : 0;
-      const span = Math.max(maxMean - minMean, 1e-9);
-      for (const row of rows) {
-        const shell = document.createElement('div');
-        shell.className = 'variant-row';
-        let width = 0;
-        if (row.summary.mean !== null) {
-          const value = Number(row.summary.mean);
-          const score = direction === 'max' ? (value - minMean) / span : (maxMean - value) / span;
-          width = Math.max(2, score * 100);
-        }
-        const missing = row.count - (row.summary.count || 0);
-        shell.innerHTML = `
-          <div class="variant-top">
-            <div class="variant-label">${escapeHtml(row.label)}</div>
-            <div class="variant-metric">${formatMetric(row.summary.mean)}</div>
-          </div>
-          <div class="bar-shell"><div class="bar-fill" style="width:${width}%"></div></div>
-          <div class="variant-meta">
-            <div>${row.count} run(s) · metric count ${row.summary.count} · stddev ${formatMetric(row.summary.stddev)}</div>
-            <div>best ${escapeHtml(row.best_run_name || row.best_run_id || '-')} · min ${formatMetric(row.summary.min)} · max ${formatMetric(row.summary.max)}${missing ? ' · missing metric ' + missing : ''}${activeBaselineLabel && row.summary.mean !== null ? ' · Δ baseline ' + formatMetric(Number(row.summary.mean) - baselineMean(rows)) : ''}</div>
-          </div>
-        `;
-        shell.onclick = async () => {
-          activeGroupRunIds = row.runs.map(item => item.run_id);
-          selectedRunId = row.best_run_id;
-          activeTab = 'metrics';
-          activeArtifactPath = null;
-          await renderAll();
-        };
-        const actionRow = document.createElement('div');
-        actionRow.className = 'inline-actions';
-        const baselineButton = document.createElement('button');
-        baselineButton.className = 'secondary';
-        baselineButton.textContent = activeBaselineLabel === row.label ? 'clear baseline' : 'set baseline';
-        baselineButton.onclick = async (event) => {
-          event.stopPropagation();
-          activeBaselineLabel = activeBaselineLabel === row.label ? null : row.label;
-          await renderAll();
-        };
-        actionRow.appendChild(baselineButton);
-        shell.appendChild(actionRow);
-        list.appendChild(shell);
-      }
-    }
-
-    function baselineMean(rows) {
-      if (!activeBaselineLabel) return 0;
-      const baseline = rows.find(row => row.label === activeBaselineLabel);
-      return baseline && baseline.summary.mean !== null ? Number(baseline.summary.mean) : 0;
-    }
-
-    function pinRun(runId) {
-      if (pinnedRunIds.includes(runId)) {
-        pinnedRunIds = pinnedRunIds.filter(item => item !== runId);
-      } else {
-        pinnedRunIds = [...pinnedRunIds.slice(-2), runId];
-      }
-    }
-
-    function contextText(run) {
-      const keys = activeVariantKeys();
-      const items = [
-        run.project || run.experiment || 'unknown',
-        run.group ? ('group=' + run.group) : null,
-        run.status ? ('status=' + run.status) : null,
-      ];
-      for (const key of keys.slice(0, 2)) {
-        if (run.params && run.params[key] !== undefined) {
-          items.push(key + '=' + run.params[key]);
-        }
-      }
-      if (run.params && run.params['train.seed'] !== undefined) {
-        items.push('seed=' + run.params['train.seed']);
-      }
-      return items.filter(Boolean).join(' · ');
     }
 
     function renderRuns() {
-      const tbody = document.getElementById('runsTableBody');
-      const empty = document.getElementById('runsEmpty');
       const runs = rankedRuns(sourceFilteredRuns());
-      tbody.innerHTML = '';
-      if (!runs.length) {
-        empty.style.display = 'block';
-        return;
-      }
-      empty.style.display = 'none';
-      const metric = activeMetric();
+      const body = document.getElementById('runsTableBody');
+      body.innerHTML = '';
+      document.getElementById('runsEmpty').style.display = runs.length ? 'none' : 'block';
       for (const run of runs) {
-        const tr = document.createElement('tr');
         const pinned = pinnedRunIds.includes(run.run_id);
-        tr.innerHTML = `
+        const metric = activeMetric();
+        const workspaceRunId = (run.tags && (run.tags['workspace.run_id'] || run.tags.workspace_run_id)) || run.name || run.run_id;
+        const row = document.createElement('tr');
+        row.innerHTML = `
           <td>
             <div class="run-name">${escapeHtml(run.name || run.run_id)}</div>
-            <div class="tiny">${escapeHtml(run.run_id)}</div>
+            <div class="tiny">${escapeHtml(workspaceRunId)}</div>
           </td>
           <td>
-            <div><span class="badge info">${escapeHtml(run.source)}</span></div>
-            <div class="tiny" style="margin-top:4px;">${escapeHtml(run.status || 'unknown')}</div>
+            <div>${escapeHtml(run.source || '-')}</div>
+            <div class="tiny">${escapeHtml(String(run.status || 'unknown'))}</div>
+          </td>
+          <td><div class="metric-value">${formatMetric(run.metrics && run.metrics[metric])}</div></td>
+          <td>
+            <div class="tiny">${escapeHtml(run.project || run.experiment || '-')}</div>
+            <div class="tiny">${escapeHtml((run.group || '-') + ' · ' + (run.path || '-'))}</div>
           </td>
           <td>
-            <div class="metric-value">${formatMetric(run.metrics && run.metrics[metric])}</div>
-            <div class="tiny">${escapeHtml(metric)}</div>
-          </td>
-          <td class="tiny">${escapeHtml(contextText(run))}</td>
-          <td>
-            <div class="artifact-actions">
-              <button class="secondary" data-action="inspect">inspect</button>
-              <button class="secondary" data-action="pin">${pinned ? 'unpin' : 'pin'}</button>
+            <div class="inline-actions">
+              <button class="secondary" type="button" data-action="inspect">Inspect</button>
+              <button class="secondary" type="button" data-action="pin">${pinned ? 'Unpin' : 'Pin'}</button>
             </div>
           </td>
         `;
-        const buttons = tr.querySelectorAll('button');
-        buttons[0].onclick = async () => {
+        row.querySelector('[data-action="inspect"]').onclick = async () => {
           selectedRunId = run.run_id;
-          activeTab = 'metrics';
           activeArtifactPath = null;
           await renderInspector();
         };
-        buttons[1].onclick = async () => {
-          pinRun(run.run_id);
-          await renderAll();
+        row.querySelector('[data-action="pin"]').onclick = () => {
+          if (pinned) {
+            pinnedRunIds = pinnedRunIds.filter(item => item !== run.run_id);
+          } else if (pinnedRunIds.length < 3) {
+            pinnedRunIds = [...pinnedRunIds, run.run_id];
+          }
+          renderShortlist();
+          renderRuns();
         };
-        tbody.appendChild(tr);
+        body.appendChild(row);
       }
-    }
-
-    function kvRows(data) {
-      const entries = Object.entries(data || {});
-      if (!entries.length) {
-        return '<div class="empty">No data in this section.</div>';
-      }
-      return '<div class="kv-table">' + entries.sort((a, b) => a[0].localeCompare(b[0])).map(([key, value]) => `
-        <div class="kv-row">
-          <div class="kv-key">${escapeHtml(key)}</div>
-          <div class="kv-value">${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</div>
-        </div>
-      `).join('') + '</div>';
-    }
-
-    function shortlistRuns() {
-      return pinnedRunIds
-        .map(runId => allRuns.find(run => run.run_id === runId))
-        .filter(Boolean);
     }
 
     function renderShortlist() {
-      const grid = document.getElementById('shortlistGrid');
-      const diff = document.getElementById('shortlistDiff');
-      const runs = shortlistRuns();
-      grid.innerHTML = '';
+      const root = document.getElementById('shortlistGrid');
+      const diffRoot = document.getElementById('shortlistDiff');
+      root.innerHTML = '';
+      const runs = currentRuns().filter(run => pinnedRunIds.includes(run.run_id));
       if (!runs.length) {
-        grid.innerHTML = '<div class="empty">Pin up to three runs from the table to compare them here.</div>';
-        diff.innerHTML = '';
+        root.innerHTML = '<div class="empty">No pinned runs yet.</div>';
+        diffRoot.textContent = 'Pin up to three runs to compare differing params.';
         return;
       }
-      const metric = activeMetric();
       for (const run of runs) {
         const shell = document.createElement('div');
         shell.className = 'short-card';
         shell.innerHTML = `
-          <div class="title">${escapeHtml(run.name || run.run_id)}</div>
+          <div class="run-name">${escapeHtml(run.name || run.run_id)}</div>
           <div class="tiny">${escapeHtml(run.run_id)}</div>
-          <div class="tiny">${escapeHtml(run.source)} · ${escapeHtml(run.status || 'unknown')}</div>
-          <div style="margin-top:8px;font-weight:700;">${escapeHtml(metric)} = ${formatMetric(run.metrics && run.metrics[metric])}</div>
+          <div class="tiny" style="margin-top:8px;">${escapeHtml(activeMetric())}: ${formatMetric(run.metrics && run.metrics[activeMetric()])}</div>
         `;
-        grid.appendChild(shell);
+        root.appendChild(shell);
       }
-      if (runs.length < 2) {
-        diff.innerHTML = '<div class="empty">Pin at least two runs to render a param diff.</div>';
-        return;
-      }
-      const valueMap = new Map();
-      for (const run of runs) {
-        for (const [key, value] of Object.entries(run.params || {})) {
-          if (!valueMap.has(key)) valueMap.set(key, new Set());
-          valueMap.get(key).add(String(value));
+      const differing = {};
+      const keys = new Set();
+      runs.forEach(run => Object.keys(run.params || {}).forEach(key => keys.add(key)));
+      for (const key of keys) {
+        const values = runs.map(run => JSON.stringify((run.params || {})[key]));
+        if (new Set(values).size > 1) {
+          differing[key] = runs.map(run => ({run_id: run.run_id, value: (run.params || {})[key]}));
         }
       }
-      const varying = [...valueMap.entries()].filter(([, values]) => values.size > 1).map(([key]) => key).slice(0, 12);
-      diff.innerHTML = varying.length
-        ? '<div class="kv-table">' + varying.map(key => `
-            <div class="kv-row">
-              <div class="kv-key">${escapeHtml(key)}</div>
-              <div class="kv-value">${runs.map(run => `<strong>${escapeHtml(run.name || run.run_id)}</strong>: ${escapeHtml(String(run.params && run.params[key] !== undefined ? run.params[key] : '<missing>'))}`).join('<br>')}</div>
-            </div>
-          `).join('') + '</div>'
-        : '<div class="empty">Pinned runs do not differ on the first visible param slice.</div>';
+      diffRoot.textContent = JSON.stringify(differing, null, 2);
     }
 
     async function renderInspector() {
       const root = document.getElementById('selectedRunShell');
-      const run = allRuns.find(item => item.run_id === selectedRunId);
+      const run = currentRuns().find(item => item.run_id === selectedRunId);
       if (!run) {
         root.innerHTML = '<div class="empty">Select a run from the table.</div>';
         return;
       }
-      const artifacts = await getJson('/api/artifacts?run_id=' + encodeURIComponent(run.run_id));
-      let preview = null;
-      if (activeTab === 'artifacts' && activeArtifactPath) {
-        preview = await getJson(
-          '/api/artifact-preview?run_id='
-            + encodeURIComponent(run.run_id)
-            + '&path='
-            + encodeURIComponent(activeArtifactPath)
-        );
-      }
-      const tabs = ['metrics', 'params', 'tags', 'artifacts'];
-      const metric = activeMetric();
-      const artifactHtml = artifacts.artifacts.length
-        ? '<div class="artifact-list">' + artifacts.artifacts.map(item => `
-            <div class="artifact-item">
-              <div class="artifact-row">
-                <div>
-                  <div><strong>${escapeHtml(item.path)}</strong></div>
-                  <div class="tiny">${escapeHtml(item.kind)} · ${item.size_bytes} bytes</div>
-                </div>
-                <div class="artifact-actions">
-                  ${item.previewable ? `<button class="secondary" data-preview="${escapeHtml(item.path)}">preview</button>` : ''}
-                  <button class="secondary" data-download="${escapeHtml(item.path)}">download</button>
-                </div>
-              </div>
-            </div>
-          `).join('') + '</div>'
-        : '<div class="empty">No local artifacts found for this run.</div>';
-      let previewHtml = '';
-      if (preview && !preview.error) {
-        if (preview.kind === 'text') {
-          previewHtml = `<div class="preview-shell">${escapeHtml(preview.text || '')}</div>`;
-        } else if (preview.kind === 'image') {
-          previewHtml = `<img class="preview-image" src="/artifact-file?run_id=${encodeURIComponent(run.run_id)}&path=${encodeURIComponent(preview.path)}" alt="${escapeHtml(preview.path)}">`;
-        } else {
-          previewHtml = `<div class="preview-shell">${escapeHtml(preview.message || 'Binary preview unavailable.')}</div>`;
+      const artifacts = await getJson('/api/artifacts?project=' + encodeURIComponent(currentProject) + '&run_id=' + encodeURIComponent(run.run_id));
+      let previewHtml = '<div class="empty">Choose an artifact preview.</div>';
+      if (activeArtifactPath) {
+        const preview = await getJson('/api/artifact-preview?project=' + encodeURIComponent(currentProject) + '&run_id=' + encodeURIComponent(run.run_id) + '&path=' + encodeURIComponent(activeArtifactPath));
+        if (preview.text) {
+          previewHtml = `<div class="preview-shell">${escapeHtml(preview.text)}</div>`;
+        } else if (preview.image_path) {
+          previewHtml = `<img class="preview-image" src="/artifact-file?project=${encodeURIComponent(currentProject)}&run_id=${encodeURIComponent(run.run_id)}&path=${encodeURIComponent(preview.image_path)}" alt="artifact preview">`;
+        } else if (preview.message) {
+          previewHtml = `<div class="preview-shell">${escapeHtml(preview.message)}</div>`;
         }
       }
-      const sectionHtml = {
-        metrics: kvRows(run.metrics),
-        params: kvRows(run.params),
-        tags: kvRows(run.tags),
-        artifacts: artifactHtml + (previewHtml ? `<div style="margin-top:12px;">${previewHtml}</div>` : ''),
-      };
       root.innerHTML = `
         <div class="detail-hero">
-          <div class="eyebrow">${escapeHtml(run.source)}</div>
-          <h3>${escapeHtml(run.name || run.run_id)}</h3>
-          <div class="tiny">${escapeHtml(contextText(run))}</div>
+          <strong>${escapeHtml(run.name || run.run_id)}</strong>
+          <div class="tiny">${escapeHtml(run.run_id)} · ${escapeHtml(run.source)} · ${escapeHtml(String(run.status || 'unknown'))}</div>
           <div class="detail-grid">
-            <div class="mini-stat"><div class="label">${escapeHtml(metric)}</div><div class="value">${formatMetric(run.metrics && run.metrics[metric])}</div></div>
-            <div class="mini-stat"><div class="label">status</div><div class="value">${escapeHtml(run.status || 'unknown')}</div></div>
-            <div class="mini-stat"><div class="label">history rows</div><div class="value">${formatCount(run.history_count || 0)}</div></div>
-            <div class="mini-stat"><div class="label">started</div><div class="value">${escapeHtml(formatTimestamp(run.start_time))}</div></div>
-          </div>
-          <div class="status-line" style="margin-top:10px;">
-            <div class="badge info">project: ${escapeHtml(run.project || run.experiment || 'unknown')}</div>
-            <div class="badge info">artifact root: ${escapeHtml(artifacts.artifact_root || 'missing')}</div>
+            <div class="stat"><div class="label">Workspace Run</div><div class="value" style="font-size:16px;">${escapeHtml((run.tags && (run.tags['workspace.run_id'] || run.tags.workspace_run_id)) || run.run_id)}</div></div>
+            <div class="stat"><div class="label">Project</div><div class="value" style="font-size:16px;">${escapeHtml(run.project || run.experiment || '-')}</div></div>
+            <div class="stat"><div class="label">Started</div><div class="value" style="font-size:16px;">${escapeHtml(formatTimestamp(run.start_time))}</div></div>
+            <div class="stat"><div class="label">Artifacts</div><div class="value" style="font-size:16px;">${artifacts.artifacts.length}</div></div>
           </div>
         </div>
         <div class="detail-tabs">
-          ${tabs.map(tab => `<div class="tab ${activeTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</div>`).join('')}
+          <div class="tab ${activeTab === 'metrics' ? 'active' : ''}" data-tab="metrics">metrics</div>
+          <div class="tab ${activeTab === 'params' ? 'active' : ''}" data-tab="params">params</div>
+          <div class="tab ${activeTab === 'tags' ? 'active' : ''}" data-tab="tags">tags</div>
+          <div class="tab ${activeTab === 'artifacts' ? 'active' : ''}" data-tab="artifacts">artifacts</div>
         </div>
-        <div id="detailTabBody">${sectionHtml[activeTab]}</div>
+        <div id="detailBody"></div>
       `;
-      root.querySelectorAll('.tab').forEach(node => {
-        node.onclick = async () => {
-          activeTab = node.dataset.tab;
-          if (activeTab !== 'artifacts') activeArtifactPath = null;
+      root.querySelectorAll('.tab').forEach(tab => {
+        tab.onclick = async () => {
+          activeTab = tab.dataset.tab;
           await renderInspector();
         };
       });
-      root.querySelectorAll('button[data-preview]').forEach(node => {
-        node.onclick = async () => {
-          activeArtifactPath = node.dataset.preview;
-          activeTab = 'artifacts';
-          await renderInspector();
-        };
-      });
-      root.querySelectorAll('button[data-download]').forEach(node => {
-        node.onclick = () => {
-          const path = node.dataset.download;
-          window.open('/artifact-file?run_id=' + encodeURIComponent(run.run_id) + '&path=' + encodeURIComponent(path), '_blank');
-        };
-      });
-    }
-
-    function renderSummary() {
-      const payload = {
-        run_count: summaryData.run_count,
-        source_details: summaryData.source_details,
-        warnings: summaryData.warnings,
-        selected_source: selectedSource,
-        metric: activeMetric(),
-        direction: activeDirection(),
-        variant_keys: activeVariantKeys(),
-        active_group_run_ids: activeGroupRunIds,
-        pinned_run_ids: pinnedRunIds,
-        timestamps: summaryData.timestamps,
-      };
-      document.getElementById('summaryShell').textContent = JSON.stringify(payload, null, 2);
-    }
-
-    async function reloadData() {
-      summaryData = await getJson('/api/summary');
-      const runsData = await getJson('/api/runs');
-      allRuns = runsData.runs || [];
-      renderSourceTabs();
-      renderMetricControls(allRuns);
-      renderStatusControl();
-      renderSecondaryMetricControl();
-      renderVariantChips();
-      renderHealth();
+      const body = root.querySelector('#detailBody');
+      if (activeTab === 'metrics') {
+        body.innerHTML = `<div class="kv-table">${Object.entries(run.metrics || {}).map(([key, value]) => `<div class="kv-row"><div>${escapeHtml(key)}</div><div>${escapeHtml(formatMetric(value))}</div></div>`).join('')}</div>`;
+      } else if (activeTab === 'params') {
+        body.innerHTML = `<div class="kv-table">${Object.entries(run.params || {}).map(([key, value]) => `<div class="kv-row"><div>${escapeHtml(key)}</div><div>${escapeHtml(JSON.stringify(value))}</div></div>`).join('')}</div>`;
+      } else if (activeTab === 'tags') {
+        body.innerHTML = `<div class="kv-table">${Object.entries(run.tags || {}).map(([key, value]) => `<div class="kv-row"><div>${escapeHtml(key)}</div><div>${escapeHtml(JSON.stringify(value))}</div></div>`).join('')}</div>`;
+      } else {
+        body.innerHTML = `
+          <div class="artifact-list">
+            ${(artifacts.artifacts || []).map(artifact => `
+              <div class="artifact-item">
+                <div><strong>${escapeHtml(artifact.path)}</strong></div>
+                <div class="tiny">${escapeHtml(artifact.kind)} · ${artifact.size_bytes} bytes</div>
+                <div class="artifact-actions">
+                  <button class="secondary" type="button" data-path="${escapeHtml(artifact.path)}">Preview</button>
+                  <a href="/artifact-file?project=${encodeURIComponent(currentProject)}&run_id=${encodeURIComponent(run.run_id)}&path=${encodeURIComponent(artifact.path)}" target="_blank" rel="noreferrer">open</a>
+                </div>
+              </div>
+            `).join('') || '<div class="empty">No artifacts found for this run.</div>'}
+          </div>
+          <div style="margin-top:12px;">${previewHtml}</div>
+        `;
+        body.querySelectorAll('button[data-path]').forEach(button => {
+          button.onclick = async () => {
+            activeArtifactPath = button.dataset.path;
+            await renderInspector();
+          };
+        });
+      }
     }
 
     async function renderAll() {
-      const runs = sourceFilteredRuns();
-      updateStats(runs);
-      renderMetricControls(runs);
+      renderProjectHeader();
+      renderSourceTabs();
+      renderMetricControls();
+      renderVariantChips();
       renderStatusControl();
       renderSecondaryMetricControl();
-      renderVariantChips();
-      renderRuns();
-      renderTradeoff();
-      renderRollups();
-      renderShortlist();
-      renderSummary();
+      const runs = sourceFilteredRuns();
+      updateStats(runs);
+      renderHealth();
       await renderCompare();
-      if (selectedRunId && !allRuns.some(run => run.run_id === selectedRunId)) {
-        selectedRunId = null;
-      }
+      renderTradeoff();
+      renderRuns();
+      renderShortlist();
       await renderInspector();
     }
 
-    async function bootstrap() {
-      await reloadData();
-      document.getElementById('runSearch').addEventListener('input', () => renderAll());
-      document.getElementById('projectInput').addEventListener('input', () => renderAll());
-      document.getElementById('metricInput').addEventListener('change', () => renderAll());
+    function bindControls() {
       document.getElementById('metricSelect').addEventListener('change', async event => {
         document.getElementById('metricInput').value = event.target.value;
         await renderAll();
       });
-      document.getElementById('secondaryMetricSelect').addEventListener('change', () => renderAll());
-      document.getElementById('directionSelect').addEventListener('change', () => renderAll());
-      document.getElementById('variantInput').addEventListener('change', () => renderAll());
-      document.getElementById('statusSelect').addEventListener('change', () => renderAll());
-      document.getElementById('clearGroupButton').onclick = async () => {
+      document.getElementById('secondaryMetricSelect').addEventListener('change', renderTradeoff);
+      document.getElementById('directionSelect').addEventListener('change', renderAll);
+      document.getElementById('variantInput').addEventListener('change', renderAll);
+      document.getElementById('statusSelect').addEventListener('change', renderAll);
+      document.getElementById('metricInput').addEventListener('change', renderAll);
+      document.getElementById('runSearch').addEventListener('input', renderAll);
+      document.getElementById('refreshButton').addEventListener('click', async () => {
+        await getJson('/api/refresh', {method: 'POST'});
+        projectCache = {};
+        await loadWorkspace(true);
+      });
+      document.getElementById('clearGroupButton').addEventListener('click', async () => {
         activeGroupRunIds = null;
         await renderAll();
-      };
-      document.getElementById('exportCompareButton').onclick = async () => {
-        const metric = activeMetric();
-        const direction = activeDirection();
-        const params = new URLSearchParams({ metric, direction });
-        for (const run of sourceFilteredRuns()) params.append('run_id', run.run_id);
-        for (const key of activeVariantKeys()) params.append('variant_key', key);
-        const payload = await getJson('/api/compare?' + params.toString());
-        downloadJson('dashboard-compare.json', payload);
-      };
-      document.getElementById('exportRunsButton').onclick = () => {
-        downloadJson('dashboard-runs.json', {
-          metric: activeMetric(),
-          direction: activeDirection(),
-          source: selectedSource,
-          project: activeProject() || null,
-          status: activeStatus(),
-          search: activeSearch() || null,
-          runs: rankedRuns(sourceFilteredRuns()),
-        });
-      };
-      document.getElementById('refreshButton').onclick = async () => {
-        await getJson('/api/refresh', { method: 'POST' });
-        activeGroupRunIds = null;
-        activeBaselineLabel = null;
-        await reloadData();
-        await renderAll();
-      };
-      if ((summaryData.available_metrics || []).length && !document.getElementById('metricInput').value.trim()) {
-        document.getElementById('metricInput').value = summaryData.available_metrics[0];
-      }
-      if ((summaryData.available_variant_keys || []).length && !document.getElementById('variantInput').value.trim()) {
-        document.getElementById('variantInput').value = summaryData.available_variant_keys.slice(0, 1).join(', ');
-      }
-      await renderAll();
+      });
+      document.getElementById('exportRunsButton').addEventListener('click', () => {
+        downloadJson((currentProject || 'project') + '-runs.json', rankedRuns(sourceFilteredRuns()));
+      });
+      document.getElementById('exportCompareButton').addEventListener('click', async () => {
+        const url = new URL('/api/compare', window.location.origin);
+        url.searchParams.set('project', currentProject);
+        url.searchParams.set('metric', activeMetric());
+        url.searchParams.set('direction', activeDirection());
+        for (const key of activeVariantKeys()) url.searchParams.append('variant_key', key);
+        downloadJson((currentProject || 'project') + '-compare.json', await getJson(url.toString()));
+      });
     }
 
-    bootstrap();
+    async function init() {
+      bindControls();
+      await loadWorkspace();
+    }
+
+    init().catch(error => {
+      document.body.innerHTML = '<pre style="padding:24px;color:#993535;">' + escapeHtml(String(error)) + '</pre>';
+    });
   </script>
 </body>
 </html>

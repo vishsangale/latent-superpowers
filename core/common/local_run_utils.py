@@ -139,6 +139,9 @@ def load_mlflow_runs_normalized(
             artifact_root = str(artifact_path) if artifact_path else None
         else:
             artifact_root = run.artifact_uri
+        workspace_mlflow_dir = run.tags.get("workspace.mlflow_dir")
+        if workspace_mlflow_dir:
+            artifact_root = workspace_mlflow_dir
         normalized.append(
             NormalizedRun(
                 source="mlflow",

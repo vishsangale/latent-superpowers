@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 
 def _write(path: Path, content: str) -> None:
@@ -105,3 +106,30 @@ target = run_dirs[-1]
         env={**os.environ, "WANDB_DIR": str(root)},
     )
     return root
+
+
+@pytest.fixture()
+def workspace_results_root(tmp_path: Path, ablation_store: Path, wandb_store: Path) -> Path:
+    results_root = tmp_path / "results"
+    project_root = results_root / "recsys"
+    project_root.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "project_name": "recsys",
+        "repo_root": str(tmp_path / "recsys-repo"),
+        "project_results_dir": str(project_root),
+        "sources": {
+            "mlflow": {
+                "tracking_uri": str(ablation_store),
+                "experiment_name": "recsys",
+            },
+            "wandb_offline": {
+                "paths": [str(wandb_store)],
+                "project": "recsys",
+            },
+        },
+    }
+    (project_root / "project.yaml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False),
+        encoding="utf-8",
+    )
+    return results_root

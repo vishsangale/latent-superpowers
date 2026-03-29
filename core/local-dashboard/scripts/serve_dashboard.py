@@ -18,14 +18,18 @@ from dashboard_data_utils import (
     grouped_compare,
     list_artifacts,
     load_dashboard_state,
+    load_workspace_state,
     normalize_variant_keys,
     read_artifact_preview,
+    resolve_project_state,
     serializable_state,
+    workspace_payload,
 )
 
 
 @dataclass
 class DashboardConfig:
+    results_root: str | None
     mlflow_uri: str | None
     mlflow_experiment_name: str | None
     mlflow_experiment_id: str | None
@@ -43,14 +47,17 @@ class AppState:
         self.reload()
 
     def _load(self) -> dict[str, object]:
-        state = load_dashboard_state(
-            mlflow_uri=self.config.mlflow_uri,
-            mlflow_experiment_name=self.config.mlflow_experiment_name,
-            mlflow_experiment_id=self.config.mlflow_experiment_id,
-            wandb_paths=self.config.wandb_paths,
-            wandb_project=self.config.wandb_project,
-            wandb_group=self.config.wandb_group,
-        )
+        if self.config.results_root:
+            state = load_workspace_state(results_root=self.config.results_root)
+        else:
+            state = load_dashboard_state(
+                mlflow_uri=self.config.mlflow_uri,
+                mlflow_experiment_name=self.config.mlflow_experiment_name,
+                mlflow_experiment_id=self.config.mlflow_experiment_id,
+                wandb_paths=self.config.wandb_paths,
+                wandb_project=self.config.wandb_project,
+                wandb_group=self.config.wandb_group,
+            )
         warnings = list(state.get("warnings", []))
         if self.config.host not in {"127.0.0.1", "localhost", "::1"}:
             warnings.append(
@@ -106,44 +113,67 @@ def make_handler(app_state: AppState):
         def do_POST(self):  # noqa: N802
             parsed = urlparse(self.path)
             if parsed.path == "/api/refresh":
-                payload = serializable_state(app_state.reload())
-                self._json(
-                    {
-                        "ok": True,
-                        "run_count": payload["run_count"],
-                        "sources": payload["sources"],
-                        "warnings": payload["warnings"],
-                    }
-                )
+                refreshed = app_state.reload()
+                if refreshed.get("mode") == "workspace":
+                    payload = workspace_payload(refreshed)
+                    self._json(
+                        {
+                            "ok": True,
+                            "mode": "workspace",
+                            "project_count": len(payload["projects"]),
+                            "default_project": payload["default_project"],
+                            "warnings": payload["warnings"],
+                        }
+                    )
+                else:
+                    payload = serializable_state(refreshed)
+                    self._json(
+                        {
+                            "ok": True,
+                            "mode": "single",
+                            "run_count": payload["run_count"],
+                            "sources": payload["sources"],
+                            "warnings": payload["warnings"],
+                        }
+                    )
                 return
             self.send_error(404, "Not found")
 
         def do_GET(self):  # noqa: N802
-            state = app_state.snapshot()
             parsed = urlparse(self.path)
             if parsed.path == "/":
                 self._html(HTML)
                 return
+            state = app_state.snapshot()
+            query = parse_qs(parsed.query)
+            project_name = query.get("project", [None])[0]
+            project_state = resolve_project_state(state, project_name)
+            project_payload = serializable_state(project_state)
+            selected_project = project_payload.get("project_name") or project_name
+            if parsed.path == "/api/workspace":
+                self._json(workspace_payload(state))
+                return
             if parsed.path == "/api/summary":
-                payload = serializable_state(state)
                 self._json(
                     {
-                        "sources": payload["sources"],
-                        "source_details": payload["source_details"],
-                        "warnings": payload["warnings"],
-                        "run_count": payload["run_count"],
-                        "status_counts": payload["status_counts"],
-                        "available_metrics": payload["available_metrics"],
-                        "available_variant_keys": payload["available_variant_keys"],
-                        "timestamps": payload["timestamps"],
+                        "project_name": selected_project,
+                        "repo_root": project_payload["repo_root"],
+                        "project_results_dir": project_payload["project_results_dir"],
+                        "sources": project_payload["sources"],
+                        "source_details": project_payload["source_details"],
+                        "warnings": project_payload["warnings"],
+                        "run_count": project_payload["run_count"],
+                        "status_counts": project_payload["status_counts"],
+                        "available_metrics": project_payload["available_metrics"],
+                        "available_variant_keys": project_payload["available_variant_keys"],
+                        "timestamps": project_payload["timestamps"],
                     }
                 )
                 return
             if parsed.path == "/api/runs":
-                self._json(serializable_state(state))
+                self._json(project_payload)
                 return
             if parsed.path == "/api/compare":
-                query = parse_qs(parsed.query)
                 metric = query.get("metric", ["avg_reward"])[0]
                 direction = query.get("direction", ["max"])[0]
                 variant_keys = normalize_variant_keys(query.get("variant_key", []))
@@ -155,7 +185,7 @@ def make_handler(app_state: AppState):
                     "direction": direction,
                     "variant_keys": variant_keys,
                     "rows": grouped_compare(
-                        state,
+                        project_state,
                         metric=metric,
                         direction=direction,
                         variant_keys=variant_keys,
@@ -163,34 +193,32 @@ def make_handler(app_state: AppState):
                         search=search,
                         run_ids=run_ids,
                     ),
+                    "project_name": selected_project,
                 }
                 self._json(payload)
                 return
             if parsed.path == "/api/artifacts":
-                query = parse_qs(parsed.query)
                 run_id = query.get("run_id", [None])[0]
                 if not run_id:
                     self.send_error(400, "run_id is required")
                     return
-                self._json(list_artifacts(state, run_id))
+                self._json(list_artifacts(project_state, run_id))
                 return
             if parsed.path == "/api/artifact-preview":
-                query = parse_qs(parsed.query)
                 run_id = query.get("run_id", [None])[0]
                 relative_path = query.get("path", [None])[0]
                 if not run_id or not relative_path:
                     self.send_error(400, "run_id and path are required")
                     return
-                self._json(read_artifact_preview(state, run_id, relative_path))
+                self._json(read_artifact_preview(project_state, run_id, relative_path))
                 return
             if parsed.path == "/artifact-file":
-                query = parse_qs(parsed.query)
                 run_id = query.get("run_id", [None])[0]
                 relative_path = query.get("path", [None])[0]
                 if not run_id or not relative_path:
                     self.send_error(400, "run_id and path are required")
                     return
-                run = find_run(state, run_id)
+                run = find_run(project_state, run_id)
                 if run is None or not run.artifact_root:
                     self.send_error(404, "unknown run")
                     return
@@ -216,6 +244,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Serve the local dashboard.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--results-root", help="Workspace results root with per-project manifests")
     parser.add_argument("--mlflow-uri", help="MLflow tracking URI")
     parser.add_argument("--mlflow-experiment-name", help="MLflow experiment name")
     parser.add_argument("--mlflow-experiment-id", help="MLflow experiment ID")
@@ -226,6 +255,7 @@ def main() -> int:
 
     app_state = AppState(
         DashboardConfig(
+            results_root=args.results_root,
             mlflow_uri=args.mlflow_uri,
             mlflow_experiment_name=args.mlflow_experiment_name,
             mlflow_experiment_id=args.mlflow_experiment_id,
