@@ -127,9 +127,12 @@ def test_dashboard_endpoints_and_refresh(ablation_store: Path, wandb_store: Path
         assert summary["run_count"] == 4
         assert "Local Experiment Dashboard" in html
         assert len(runs["runs"]) == 4
+        mlflow_run = next(run for run in runs["runs"] if run["run_id"] == "run_a")
+        assert mlflow_run["params"]["service.api_key"] == "<redacted>"
         assert compare_max["rows"][0]["label"] == "agent.lr=0.02"
         assert compare_min["rows"][0]["label"] == "agent.lr=0.02"
         assert compare_scoped["rows"][0]["count"] == 2
+        assert compare_scoped["rows"][0]["runs"][0]["params"]["service.api_key"] == "<redacted>"
         assert artifacts["artifacts"]
         assert "artifact for run_a" in preview["text"]
         assert artifact_body == "artifact for run_a\n"

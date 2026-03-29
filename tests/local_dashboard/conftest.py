@@ -43,6 +43,7 @@ def _write_run(
     _write(run_dir / "metrics" / "avg_reward", f"1000 {avg_reward} 1\n")
     _write(run_dir / "metrics" / "loss", f"1000 {loss} 1\n")
     _write(run_dir / "params" / "agent.lr", lr + "\n")
+    _write(run_dir / "params" / "service.api_key", "shh-secret\n")
     _write(run_dir / "params" / "train.seed", seed + "\n")
     _write(run_dir / "tags" / "mlflow.runName", run_id + "\n")
     _write(artifact_dir / "artifact.txt", f"artifact for {run_id}\n")

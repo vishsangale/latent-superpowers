@@ -41,6 +41,7 @@ TEXT_SUFFIXES = {
 }
 IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MAX_TEXT_PREVIEW_BYTES = 200_000
+SENSITIVE_TOKENS = ("api_key", "apikey", "credential", "password", "secret", "token")
 
 
 def normalize_variant_keys(raw_values: list[str] | None) -> list[str]:
@@ -59,6 +60,32 @@ def _metric_keys(runs: list[NormalizedRun]) -> list[str]:
         for key in run.metrics:
             counts[key] = counts.get(key, 0) + 1
     return [key for key, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+
+
+def _is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(token in lowered for token in SENSITIVE_TOKENS)
+
+
+def _redact_mapping(data: Any) -> Any:
+    if isinstance(data, dict):
+        payload: dict[str, Any] = {}
+        for key, value in data.items():
+            if _is_sensitive_key(str(key)):
+                payload[key] = "<redacted>"
+            else:
+                payload[key] = _redact_mapping(value)
+        return payload
+    if isinstance(data, list):
+        return [_redact_mapping(item) for item in data]
+    return data
+
+
+def safe_run_to_dict(run: NormalizedRun) -> dict[str, Any]:
+    payload = run_to_dict(run)
+    payload["params"] = _redact_mapping(payload.get("params", {}))
+    payload["tags"] = _redact_mapping(payload.get("tags", {}))
+    return payload
 
 
 def _status_counts(runs: list[NormalizedRun]) -> dict[str, int]:
@@ -204,7 +231,7 @@ def serializable_state(state: dict[str, Any]) -> dict[str, Any]:
         "available_metrics": state["available_metrics"],
         "available_variant_keys": state["available_variant_keys"],
         "timestamps": state["timestamps"],
-        "runs": [run_to_dict(run) for run in state["runs"]],
+        "runs": [safe_run_to_dict(run) for run in state["runs"]],
     }
 
 
@@ -255,7 +282,10 @@ def grouped_compare(
     run_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     runs = filtered_runs(state, source=source, search=search, run_ids=run_ids)
-    return grouped_payload(group_runs(runs, variant_keys), metric, direction=direction)
+    rows = grouped_payload(group_runs(runs, variant_keys), metric, direction=direction)
+    for row in rows:
+        row["runs"] = [safe_run_to_dict(run) for run in runs if run.run_id in {item["run_id"] for item in row["runs"]}]
+    return rows
 
 
 def find_run(state: dict[str, Any], run_id: str) -> NormalizedRun | None:
