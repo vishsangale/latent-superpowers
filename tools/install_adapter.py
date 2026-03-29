@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate and install an adapter from ml-agent-skills into a live tool directory.
+Generate and install an adapter from latent-superpowers into a live tool directory.
 """
 
 from __future__ import annotations
