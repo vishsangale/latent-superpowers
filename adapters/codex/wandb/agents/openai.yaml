@@ -1,0 +1,4 @@
+interface:
+  display_name: "Weights & Biases"
+  short_description: "Analyze W&B experiment tracking workflows"
+  default_prompt: "Use $wandb to compare runs, inspect sweeps, and summarize experiment results for this project."

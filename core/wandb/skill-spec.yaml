@@ -1,0 +1,75 @@
+name: wandb
+title: Weights & Biases
+summary: Inspect, compare, and summarize Weights & Biases experiment tracking workflows.
+description: Use when the task involves W&B projects, runs, groups, sweeps, configs, metrics, artifacts, offline sync issues, or selecting the best run under explicit evaluation criteria.
+codex:
+  display_name: Weights & Biases
+  short_description: Analyze W&B experiment tracking workflows
+  default_prompt: Use $wandb to compare runs, inspect sweeps, and summarize experiment results for this project.
+use_when:
+  - The user mentions wandb, W&B, runs, groups, sweeps, artifacts, entities, or projects.
+  - The task is to compare runs, summarize a sweep, explain a dashboard discrepancy, or track down a checkpoint or artifact lineage.
+  - The user wants concise experiment summaries grounded in logged metrics, configs, and artifacts.
+avoid_when:
+  - Hydra config composition or override-debugging tasks.
+  - MLflow tracking or model-registry workflows.
+  - Blind mutation. Launching sweeps, deleting runs, or editing metadata should only happen on explicit request.
+principles:
+  - Resolve entity, project, run set, and metric selection before comparing anything.
+  - Make the definition of best run explicit.
+  - Prefer selective history pulls over full histories unless the task requires step-level inspection.
+  - Treat offline and online W&B usage as separate modes with different debugging steps.
+safety_rules:
+  - Prefer read-only inspection and summarization.
+  - Do not mutate runs, artifacts, or sweeps unless the user explicitly requests it.
+  - State missing metrics, partial histories, and logging inconsistencies as analysis risks.
+expected_outputs:
+  - resolved entity or project context
+  - the run set being compared
+  - the ranking metric and any constraints
+  - a compact run summary, sweep summary, or artifact lineage summary
+commands:
+  - name: check_wandb_context.py
+    summary: Verify auth and resolve W&B entity or project context.
+  - name: compare_runs.py
+    summary: Compare runs under explicit metrics and filters.
+  - name: summarize_sweep.py
+    summary: Summarize a W&B sweep with winners, tradeoffs, and incomplete runs.
+  - name: artifact_lineage.py
+    summary: Inspect artifact versions, producer runs, and checkpoint lineage.
+references:
+  - path: references/workflow.md
+    summary: Project resolution, run gathering, and comparison flow.
+  - path: references/metrics-and-selection.md
+    summary: Metric choice, ranking discipline, and common comparison pitfalls.
+  - path: references/reporting.md
+    summary: Templates for concise W&B experiment summaries.
+workflows:
+  - name: Compare runs
+    helpers:
+      - check_wandb_context.py
+      - compare_runs.py
+    steps:
+      - Resolve the entity, project, and target run set.
+      - Make the ranking metric explicit.
+      - Pull summary metrics and config deltas.
+      - Present the comparison and explain why one run beats another.
+  - name: Summarize a sweep
+    helpers:
+      - check_wandb_context.py
+      - summarize_sweep.py
+    steps:
+      - Resolve the sweep and constituent runs.
+      - Rank runs with a clear metric and optional constraints.
+      - Highlight parameter trends, incomplete runs, and suspicious outliers.
+      - Produce a concise researcher-facing summary.
+  - name: Trace an artifact
+    helpers:
+      - artifact_lineage.py
+    steps:
+      - Resolve the artifact name and version.
+      - Identify the producing run and relevant aliases.
+      - Identify downstream consumers when available.
+      - Report the exact artifact or checkpoint lineage.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared W&B core. Prefer invoking the CLI helpers under the shared core before writing custom analysis logic.
