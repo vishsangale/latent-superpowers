@@ -1,0 +1,67 @@
+name: paper-to-code
+title: Paper To Code
+summary: Turn paper summaries or method notes into implementation plans, repo gap maps, and evaluation checklists.
+description: Use when the task involves translating a paper, method summary, or research note into an implementation plan, identifying which parts already exist in a repo, enumerating missing components, or defining the evaluation work needed to validate the method.
+codex:
+  display_name: Paper To Code
+  short_description: Turn papers into repo-aware implementation plans
+  default_prompt: Use $paper-to-code to extract the implementation plan from this paper summary, map it onto the repo, and define the evaluation checklist.
+use_when:
+  - The user wants to implement a paper or new method in an existing repo.
+  - The task is to extract architecture, loss, data, training, and evaluation requirements from a paper summary or notes.
+  - The user wants a repo-aware baseline plan rather than a generic reading of the paper.
+avoid_when:
+  - Pure experiment comparison that belongs to ablation-analysis.
+  - Low-level config work that belongs to Hydra.
+  - Claiming implementation completeness when the paper summary is incomplete.
+principles:
+  - Extract concrete requirements before mapping the repo.
+  - Separate what the paper requires from what the repo already has.
+  - Produce staged plans with explicit missing pieces and risks.
+  - Treat evaluation design as part of implementation, not an afterthought.
+safety_rules:
+  - Prefer planning and mapping before code mutation.
+  - State missing paper details and uncertain assumptions explicitly.
+  - Do not pretend the paper is fully specified if the input summary is partial.
+expected_outputs:
+  - a structured method plan
+  - a repo gap map
+  - a staged implementation plan
+  - an evaluation checklist with concrete items
+commands:
+  - name: extract_method_plan.py
+    summary: Parse a paper summary or method note into structured implementation requirements.
+  - name: map_repo_gaps.py
+    summary: Search a repo for matching components and identify missing method requirements.
+  - name: scaffold_baseline_plan.py
+    summary: Turn a method plan and repo map into a staged implementation plan.
+  - name: eval_checklist.py
+    summary: Generate a concrete evaluation and ablation checklist from a method plan.
+references:
+  - path: references/workflow.md
+    summary: Paper decomposition, repo mapping, and staged planning flow.
+  - path: references/component-taxonomy.md
+    summary: The method components this skill extracts and maps.
+  - path: references/eval-checklist.md
+    summary: Evaluation categories, baselines, and ablation expectations.
+workflows:
+  - name: Build a repo-aware implementation plan
+    helpers:
+      - extract_method_plan.py
+      - map_repo_gaps.py
+      - scaffold_baseline_plan.py
+    steps:
+      - Parse the method summary into architecture, objective, data, training, and evaluation requirements.
+      - Search the repo for existing matches and likely owner files.
+      - Mark missing components and risky assumptions.
+      - Emit a staged implementation plan with validation points.
+  - name: Define the evaluation work
+    helpers:
+      - extract_method_plan.py
+      - eval_checklist.py
+    steps:
+      - Identify the paper’s target metrics, baselines, and robustness claims.
+      - Turn them into a concrete local evaluation checklist.
+      - Separate must-have evals from nice-to-have ablations.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared paper-to-code core. Prefer invoking the CLI helpers under the shared core before writing an ad-hoc plan.

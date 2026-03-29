@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import create_offline_run
+from .conftest import create_offline_run
 
 
 SCRIPT = (

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper To Code"
+  short_description: "Turn papers into repo-aware implementation plans"
+  default_prompt: "Use $paper-to-code to extract the implementation plan from this paper summary, map it onto the repo, and define the evaluation checklist."

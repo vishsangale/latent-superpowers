@@ -1,0 +1,52 @@
+name: local-dashboard
+title: Local Dashboard
+summary: Serve a local browser UI over MLflow, W&B, artifacts, and ablation-style comparisons without auth or external services.
+description: Use when the task involves browsing local runs in a browser, comparing local MLflow and W&B data, inspecting artifacts, or giving a single-user local dashboard over experiment results without requiring hosted services or API keys.
+codex:
+  display_name: Local Dashboard
+  short_description: Serve a no-auth local experiment dashboard
+  default_prompt: Use $local-dashboard to inspect local MLflow and W&B runs in a browser and compare them without external services.
+use_when:
+  - The user wants a local web UI over local experiment runs.
+  - The task is to browse local MLflow and W&B data without auth or hosted dashboards.
+  - The user wants run tables, grouped comparisons, and artifact browsing from local files.
+avoid_when:
+  - Hosted W&B or MLflow server debugging.
+  - Repository planning work that belongs to paper-to-code.
+  - High-polish frontend design work. The dashboard should optimize for clarity and utility first.
+principles:
+  - Load local run data into one normalized shape before serving anything.
+  - Keep the dashboard single-user, local-first, and zero-auth.
+  - Prefer simple JSON APIs plus a static local frontend.
+  - Expose grouped comparison and artifact inspection directly in the UI.
+safety_rules:
+  - Prefer read-only local inspection.
+  - Do not mutate runs, artifacts, or tracking stores.
+  - State when sources are partial or when a data backend could not be loaded.
+expected_outputs:
+  - a local dashboard URL
+  - source and run counts
+  - grouped comparison data for one explicit metric
+  - artifact listings for selected runs
+commands:
+  - name: index_runs.py
+    summary: Load local MLflow and W&B sources and emit a normalized dashboard index.
+  - name: serve_dashboard.py
+    summary: Serve a local dashboard with JSON APIs and a browser UI for runs, comparisons, and artifacts.
+references:
+  - path: references/workflow.md
+    summary: Local dashboard loading and serving flow.
+  - path: references/data-model.md
+    summary: The normalized run shape and API surface.
+workflows:
+  - name: Serve a local dashboard
+    helpers:
+      - index_runs.py
+      - serve_dashboard.py
+    steps:
+      - Resolve local MLflow and W&B sources.
+      - Build a normalized local run index.
+      - Start the dashboard server on a chosen host and port.
+      - Use the UI or JSON APIs to inspect runs, grouped comparisons, and artifacts.
+generic_adapter_note: |
+  This adapter is a thin wrapper over the shared local-dashboard core. Prefer invoking the CLI helpers under the shared core before building ad-hoc local viewers.

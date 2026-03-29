@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import create_artifact_run
+from .conftest import create_artifact_run
 
 
 SCRIPT = (
