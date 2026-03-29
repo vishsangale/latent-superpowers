@@ -491,7 +491,7 @@ HTML = """<!doctype html>
     .mini-stat .value { font-size: 16px; font-weight: 700; }
     .controls {
       display: grid;
-      grid-template-columns: 1.2fr 0.9fr 0.55fr 1.1fr auto auto;
+      grid-template-columns: 1.2fr 0.85fr 0.75fr 0.6fr 1.1fr 0.9fr auto;
       gap: 10px;
       margin-bottom: 12px;
     }
@@ -648,6 +648,12 @@ HTML = """<!doctype html>
     .short-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+    .inline-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
     .short-card .title {
       font-weight: 700;
       margin-bottom: 6px;
@@ -714,6 +720,7 @@ HTML = """<!doctype html>
           </div>
           <div class="controls">
             <input id="runSearch" placeholder="Search run name, id, group, project, params, or tags">
+            <input id="projectInput" placeholder="Project or experiment">
             <input id="metricInput" placeholder="Metric key">
             <select id="metricSelect"></select>
             <select id="directionSelect">
@@ -721,6 +728,7 @@ HTML = """<!doctype html>
               <option value="min">min</option>
             </select>
             <input id="variantInput" placeholder="Variant keys, comma separated">
+            <select id="statusSelect"></select>
             <button id="refreshButton">Reload Data</button>
           </div>
           <div class="grid-2">
@@ -742,6 +750,7 @@ HTML = """<!doctype html>
               <p class="section-copy">Backend-driven grouped comparison with count, spread, and drilldown into cohort members.</p>
             </div>
             <div class="status-line">
+              <button class="secondary" id="exportCompareButton">Export Compare</button>
               <button class="secondary" id="clearGroupButton">Clear Cohort Filter</button>
             </div>
           </div>
@@ -755,6 +764,7 @@ HTML = """<!doctype html>
               <h2>Runs</h2>
               <p class="section-copy">Sorted by the active metric and direction. Pin up to three runs for side-by-side review.</p>
             </div>
+            <button class="secondary" id="exportRunsButton">Export Runs</button>
           </div>
           <div class="table-wrap">
             <table>
@@ -827,6 +837,7 @@ HTML = """<!doctype html>
     let activeGroupRunIds = null;
     let pinnedRunIds = [];
     let activeArtifactPath = null;
+    let activeBaselineLabel = null;
 
     async function getJson(url, options) {
       const response = await fetch(url, options);
@@ -866,6 +877,10 @@ HTML = """<!doctype html>
       return document.getElementById('metricInput').value.trim() || 'avg_reward';
     }
 
+    function activeProject() {
+      return document.getElementById('projectInput').value.trim().toLowerCase();
+    }
+
     function activeDirection() {
       return document.getElementById('directionSelect').value || 'max';
     }
@@ -880,10 +895,34 @@ HTML = """<!doctype html>
       return document.getElementById('runSearch').value.trim().toLowerCase();
     }
 
+    function activeStatus() {
+      return document.getElementById('statusSelect').value || 'all';
+    }
+
+    function downloadJson(filename, payload) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
     function sourceFilteredRuns() {
       let runs = allRuns.slice();
       if (selectedSource !== 'all') {
         runs = runs.filter(run => run.source === selectedSource);
+      }
+      const projectNeedle = activeProject();
+      if (projectNeedle) {
+        runs = runs.filter(run => {
+          const haystack = [run.project, run.experiment].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(projectNeedle);
+        });
+      }
+      const status = activeStatus();
+      if (status !== 'all') {
+        runs = runs.filter(run => String(run.status || 'unknown').toLowerCase() === status);
       }
       if (activeGroupRunIds) {
         const allowed = new Set(activeGroupRunIds);
@@ -938,9 +977,12 @@ HTML = """<!doctype html>
       badges.innerHTML = '';
       const items = [
         { label: 'view: ' + (selectedSource === 'all' ? 'all sources' : selectedSource), kind: 'info' },
+        activeProject() ? { label: 'project: ' + activeProject(), kind: 'info' } : null,
+        activeStatus() !== 'all' ? { label: 'status: ' + activeStatus(), kind: 'info' } : null,
         { label: 'metric: ' + metric + ' (' + activeDirection() + ')', kind: 'info' },
         { label: 'group by: ' + (activeVariantKeys().join(', ') || '<none>'), kind: 'info' },
         activeGroupRunIds ? { label: 'cohort filter: ' + activeGroupRunIds.length + ' run(s)', kind: 'good' } : null,
+        activeBaselineLabel ? { label: 'baseline: ' + activeBaselineLabel, kind: 'good' } : null,
         activeSearch() ? { label: 'search active', kind: 'info' } : null,
         missingMetric ? { label: 'missing metric: ' + missingMetric, kind: 'warn' } : null,
       ].filter(Boolean);
@@ -1003,6 +1045,20 @@ HTML = """<!doctype html>
       }
     }
 
+    function renderStatusControl() {
+      const select = document.getElementById('statusSelect');
+      const current = activeStatus();
+      const options = ['all', ...Object.keys(summaryData.status_counts || {})];
+      select.innerHTML = '';
+      for (const value of options) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value === 'all' ? 'all statuses' : value;
+        if (value === current) option.selected = true;
+        select.appendChild(option);
+      }
+    }
+
     function renderVariantChips() {
       const root = document.getElementById('quickVariantRow');
       root.innerHTML = '';
@@ -1057,13 +1113,13 @@ HTML = """<!doctype html>
       const metric = activeMetric();
       const direction = activeDirection();
       const variantKeys = activeVariantKeys();
+      const scopedRuns = sourceFilteredRuns();
       if (!variantKeys.length) {
         winner.textContent = 'Enter at least one variant key to render grouped comparison.';
         return;
       }
       const params = new URLSearchParams({ metric, direction });
-      params.set('source', selectedSource);
-      if (activeSearch()) params.set('search', activeSearch());
+      for (const run of scopedRuns) params.append('run_id', run.run_id);
       for (const key of variantKeys) params.append('variant_key', key);
       const payload = await getJson('/api/compare?' + params.toString());
       const rows = payload.rows || [];
@@ -1096,7 +1152,7 @@ HTML = """<!doctype html>
           <div class="bar-shell"><div class="bar-fill" style="width:${width}%"></div></div>
           <div class="variant-meta">
             <div>${row.count} run(s) · metric count ${row.summary.count} · stddev ${formatMetric(row.summary.stddev)}</div>
-            <div>best ${escapeHtml(row.best_run_name || row.best_run_id || '-')} · min ${formatMetric(row.summary.min)} · max ${formatMetric(row.summary.max)}${missing ? ' · missing metric ' + missing : ''}</div>
+            <div>best ${escapeHtml(row.best_run_name || row.best_run_id || '-')} · min ${formatMetric(row.summary.min)} · max ${formatMetric(row.summary.max)}${missing ? ' · missing metric ' + missing : ''}${activeBaselineLabel && row.summary.mean !== null ? ' · Δ baseline ' + formatMetric(Number(row.summary.mean) - baselineMean(rows)) : ''}</div>
           </div>
         `;
         shell.onclick = async () => {
@@ -1106,8 +1162,26 @@ HTML = """<!doctype html>
           activeArtifactPath = null;
           await renderAll();
         };
+        const actionRow = document.createElement('div');
+        actionRow.className = 'inline-actions';
+        const baselineButton = document.createElement('button');
+        baselineButton.className = 'secondary';
+        baselineButton.textContent = activeBaselineLabel === row.label ? 'clear baseline' : 'set baseline';
+        baselineButton.onclick = async (event) => {
+          event.stopPropagation();
+          activeBaselineLabel = activeBaselineLabel === row.label ? null : row.label;
+          await renderAll();
+        };
+        actionRow.appendChild(baselineButton);
+        shell.appendChild(actionRow);
         list.appendChild(shell);
       }
+    }
+
+    function baselineMean(rows) {
+      if (!activeBaselineLabel) return 0;
+      const baseline = rows.find(row => row.label === activeBaselineLabel);
+      return baseline && baseline.summary.mean !== null ? Number(baseline.summary.mean) : 0;
     }
 
     function pinRun(runId) {
@@ -1365,6 +1439,7 @@ HTML = """<!doctype html>
       allRuns = runsData.runs || [];
       renderSourceTabs();
       renderMetricControls(allRuns);
+      renderStatusControl();
       renderVariantChips();
       renderHealth();
     }
@@ -1373,6 +1448,7 @@ HTML = """<!doctype html>
       const runs = sourceFilteredRuns();
       updateStats(runs);
       renderMetricControls(runs);
+      renderStatusControl();
       renderVariantChips();
       renderRuns();
       renderShortlist();
@@ -1387,6 +1463,7 @@ HTML = """<!doctype html>
     async function bootstrap() {
       await reloadData();
       document.getElementById('runSearch').addEventListener('input', () => renderAll());
+      document.getElementById('projectInput').addEventListener('input', () => renderAll());
       document.getElementById('metricInput').addEventListener('change', () => renderAll());
       document.getElementById('metricSelect').addEventListener('change', async event => {
         document.getElementById('metricInput').value = event.target.value;
@@ -1394,13 +1471,35 @@ HTML = """<!doctype html>
       });
       document.getElementById('directionSelect').addEventListener('change', () => renderAll());
       document.getElementById('variantInput').addEventListener('change', () => renderAll());
+      document.getElementById('statusSelect').addEventListener('change', () => renderAll());
       document.getElementById('clearGroupButton').onclick = async () => {
         activeGroupRunIds = null;
         await renderAll();
       };
+      document.getElementById('exportCompareButton').onclick = async () => {
+        const metric = activeMetric();
+        const direction = activeDirection();
+        const params = new URLSearchParams({ metric, direction });
+        for (const run of sourceFilteredRuns()) params.append('run_id', run.run_id);
+        for (const key of activeVariantKeys()) params.append('variant_key', key);
+        const payload = await getJson('/api/compare?' + params.toString());
+        downloadJson('dashboard-compare.json', payload);
+      };
+      document.getElementById('exportRunsButton').onclick = () => {
+        downloadJson('dashboard-runs.json', {
+          metric: activeMetric(),
+          direction: activeDirection(),
+          source: selectedSource,
+          project: activeProject() || null,
+          status: activeStatus(),
+          search: activeSearch() || null,
+          runs: rankedRuns(sourceFilteredRuns()),
+        });
+      };
       document.getElementById('refreshButton').onclick = async () => {
         await getJson('/api/refresh', { method: 'POST' });
         activeGroupRunIds = null;
+        activeBaselineLabel = null;
         await reloadData();
         await renderAll();
       };
