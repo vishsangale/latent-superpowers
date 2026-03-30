@@ -133,3 +133,85 @@ def workspace_results_root(tmp_path: Path, ablation_store: Path, wandb_store: Pa
         encoding="utf-8",
     )
     return results_root
+
+
+@pytest.fixture()
+def tensorboard_exec(tmp_path: Path) -> Path:
+    script = tmp_path / "fake_tensorboard_exec.py"
+    script.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import json",
+                "payload = {",
+                '  "runs": [',
+                "    {",
+                '      "source": "tensorboard",',
+                '      "project": None,',
+                '      "experiment": "legacy-sweep",',
+                '      "run_id": "tb_run_1",',
+                '      "name": "baseline_fmnist_e0.25_s0",',
+                '      "group": "20260324_014838_comprehensive",',
+                '      "status": "finished",',
+                '      "start_time": 100.0,',
+                '      "end_time": 200.0,',
+                '      "metrics": {"Loss.train": 0.8, "Acc.test": 84.5},',
+                '      "params": {"dataset": "fmnist", "epsilon": 0.25, "train.seed": 0, "variant": "baseline_fmnist"},',
+                '      "tags": {"tensorboard.scalar_tags": ["Loss/train", "Acc/test"]},',
+                '      "artifact_root": "/tmp/tb_run_1",',
+                '      "path": "/tmp/tb_run_1",',
+                '      "history_count": 12',
+                "    }",
+                "   ,{",
+                '      "source": "tensorboard",',
+                '      "project": None,',
+                '      "experiment": "legacy-sweep",',
+                '      "run_id": "tb_run_nan",',
+                '      "name": "nan_variant_s1",',
+                '      "group": "20260324_014838_comprehensive",',
+                '      "status": "finished",',
+                '      "start_time": 150.0,',
+                '      "end_time": 250.0,',
+                '      "metrics": {"Loss.train": float("nan"), "Acc.test": 81.0},',
+                '      "params": {"dataset": "fmnist", "train.seed": 1, "variant": "nan_variant"},',
+                '      "tags": {"tensorboard.scalar_tags": ["Loss/train", "Acc/test"]},',
+                '      "artifact_root": "/tmp/tb_run_nan",',
+                '      "path": "/tmp/tb_run_nan",',
+                '      "history_count": 10',
+                "    }",
+                "  ]",
+                "}",
+                "print(json.dumps(payload))",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+@pytest.fixture()
+def tensorboard_results_root(tmp_path: Path, tensorboard_exec: Path) -> Path:
+    results_root = tmp_path / "results"
+    project_root = results_root / "mendu"
+    tb_root = project_root / "legacy" / "runs"
+    run_dir = tb_root / "legacy-sweep" / "baseline_fmnist_e0.25_s0"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "events.out.tfevents.fake").write_text("", encoding="utf-8")
+    manifest = {
+        "project_name": "mendu",
+        "repo_root": str(tmp_path / "mendu-repo"),
+        "project_results_dir": str(project_root),
+        "sources": {
+            "tensorboard": {
+                "paths": [str(tb_root)],
+                "python": str(tensorboard_exec),
+            }
+        },
+    }
+    (project_root / "project.yaml").write_text(
+        yaml.safe_dump(manifest, sort_keys=False),
+        encoding="utf-8",
+    )
+    return results_root

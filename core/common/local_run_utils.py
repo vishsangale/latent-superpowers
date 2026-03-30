@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
 from pathlib import Path
+import subprocess
 from typing import Any
 import statistics
 import sys
@@ -13,6 +15,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 MLFLOW_SCRIPTS = ROOT / "core" / "mlflow" / "scripts"
 WANDB_SCRIPTS = ROOT / "core" / "wandb" / "scripts"
+TENSORBOARD_HELPER = ROOT / "core" / "common" / "tensorboard_loader_helper.py"
 for candidate in (MLFLOW_SCRIPTS, WANDB_SCRIPTS):
     candidate_str = str(candidate)
     if candidate_str not in sys.path:
@@ -202,6 +205,67 @@ def load_wandb_runs_normalized(
     return normalized
 
 
+def load_tensorboard_runs_normalized(
+    *,
+    paths: list[str] | None = None,
+    project: str | None = None,
+    python_executable: str | None = None,
+    limit: int = 1000,
+) -> list[NormalizedRun]:
+    if not paths:
+        return []
+    roots = [Path(path).expanduser().resolve() for path in paths]
+    has_event_files = any(root.exists() and next(root.rglob("events.out.tfevents.*"), None) for root in roots)
+    if not has_event_files:
+        return []
+
+    if python_executable:
+        executable = Path(python_executable).expanduser()
+        stem = executable.name.lower()
+        if stem.startswith("python"):
+            command = [str(executable), str(TENSORBOARD_HELPER)]
+        else:
+            command = [str(executable)]
+    else:
+        command = [sys.executable, str(TENSORBOARD_HELPER)]
+    for path in paths:
+        command.extend(["--path", path])
+
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    normalized: list[NormalizedRun] = []
+    for item in payload.get("runs", [])[:limit]:
+        normalized.append(
+            NormalizedRun(
+                source="tensorboard",
+                project=project or item.get("project"),
+                experiment=item.get("experiment"),
+                run_id=str(item["run_id"]),
+                name=item.get("name"),
+                group=item.get("group"),
+                status=item.get("status"),
+                start_time=item.get("start_time"),
+                end_time=item.get("end_time"),
+                metrics={
+                    key: float(value)
+                    for key, value in (item.get("metrics") or {}).items()
+                    if isinstance(value, (int, float))
+                },
+                params=dict(item.get("params") or {}),
+                tags=dict(item.get("tags") or {}),
+                artifact_root=item.get("artifact_root"),
+                path=str(item.get("path") or item.get("artifact_root") or ""),
+                history_count=int(item.get("history_count") or 0),
+            )
+        )
+    return normalized
+
+
 def load_local_runs(
     *,
     mlflow_tracking_uri: str | None = None,
@@ -210,6 +274,9 @@ def load_local_runs(
     wandb_paths: list[str] | None = None,
     wandb_project: str | None = None,
     wandb_group: str | None = None,
+    tensorboard_paths: list[str] | None = None,
+    tensorboard_project: str | None = None,
+    tensorboard_python: str | None = None,
     limit_per_source: int = 1000,
 ) -> list[NormalizedRun]:
     runs: list[NormalizedRun] = []
@@ -228,6 +295,15 @@ def load_local_runs(
                 paths=wandb_paths,
                 project=wandb_project,
                 group=wandb_group,
+                limit=limit_per_source,
+            )
+        )
+    if tensorboard_paths:
+        runs.extend(
+            load_tensorboard_runs_normalized(
+                paths=tensorboard_paths,
+                project=tensorboard_project,
+                python_executable=tensorboard_python,
                 limit=limit_per_source,
             )
         )

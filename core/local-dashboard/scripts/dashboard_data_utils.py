@@ -22,6 +22,7 @@ from ablation_utils import group_runs, grouped_payload  # type: ignore[import-no
 from local_run_utils import (  # type: ignore[import-not-found]
     NormalizedRun,
     load_mlflow_runs_normalized,
+    load_tensorboard_runs_normalized,
     load_wandb_runs_normalized,
     run_to_dict,
     varying_param_values,
@@ -138,6 +139,8 @@ def load_dashboard_state(
     wandb_paths: list[str] | None,
     wandb_project: str | None,
     wandb_group: str | None,
+    tensorboard_paths: list[str] | None = None,
+    tensorboard_python: str | None = None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
     runs: list[NormalizedRun] = []
@@ -215,6 +218,40 @@ def load_dashboard_state(
                 )
             )
 
+    if tensorboard_paths:
+        try:
+            tensorboard_runs = load_tensorboard_runs_normalized(
+                paths=tensorboard_paths,
+                project=project_name,
+                python_executable=tensorboard_python,
+            )
+            runs.extend(tensorboard_runs)
+            source_details.append(
+                _source_detail(
+                    source="tensorboard",
+                    source_runs=tensorboard_runs,
+                    warning=None,
+                    config={
+                        "paths": tensorboard_paths,
+                        "python": tensorboard_python,
+                    },
+                )
+            )
+        except Exception as exc:  # pragma: no cover
+            warning = f"Failed to load TensorBoard runs: {exc}"
+            warnings.append(warning)
+            source_details.append(
+                _source_detail(
+                    source="tensorboard",
+                    source_runs=[],
+                    warning=warning,
+                    config={
+                        "paths": tensorboard_paths,
+                        "python": tensorboard_python,
+                    },
+                )
+            )
+
     runs.sort(key=lambda run: ((run.start_time or 0), run.run_id), reverse=True)
     return {
         "project_name": project_name or mlflow_experiment_name or wandb_project,
@@ -282,6 +319,8 @@ def load_workspace_state(*, results_root: str) -> dict[str, Any]:
             wandb_paths=manifest.wandb_paths,
             wandb_project=manifest.wandb_project,
             wandb_group=None,
+            tensorboard_paths=manifest.tensorboard_paths,
+            tensorboard_python=manifest.tensorboard_python,
         )
         project_states[manifest.name] = project_state
         project_summaries.append(_project_summary(manifest, project_state))
@@ -352,6 +391,8 @@ def resolve_project_state(state: dict[str, Any], project_name: str | None = None
         wandb_paths=None,
         wandb_project=None,
         wandb_group=None,
+        tensorboard_paths=None,
+        tensorboard_python=None,
     )
 
 

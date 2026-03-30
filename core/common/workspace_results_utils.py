@@ -20,6 +20,8 @@ class ProjectManifest:
     mlflow_experiment_name: str | None
     wandb_paths: list[str]
     wandb_project: str | None
+    tensorboard_paths: list[str]
+    tensorboard_python: str | None
 
 
 def load_project_manifest(path: str | Path) -> ProjectManifest:
@@ -28,6 +30,7 @@ def load_project_manifest(path: str | Path) -> ProjectManifest:
     sources = data.get("sources", {}) or {}
     mlflow = sources.get("mlflow", {}) or {}
     wandb = sources.get("wandb_offline", {}) or {}
+    tensorboard = sources.get("tensorboard", {}) or {}
     return ProjectManifest(
         name=str(data.get("project_name") or manifest_path.parent.name),
         path=str(manifest_path),
@@ -37,6 +40,8 @@ def load_project_manifest(path: str | Path) -> ProjectManifest:
         mlflow_experiment_name=mlflow.get("experiment_name"),
         wandb_paths=[str(item) for item in (wandb.get("paths") or [])],
         wandb_project=wandb.get("project"),
+        tensorboard_paths=[str(item) for item in (tensorboard.get("paths") or [])],
+        tensorboard_python=tensorboard.get("python"),
     )
 
 
@@ -64,4 +69,6 @@ def manifest_to_dict(manifest: ProjectManifest) -> dict[str, Any]:
         "mlflow_experiment_name": manifest.mlflow_experiment_name,
         "wandb_paths": manifest.wandb_paths,
         "wandb_project": manifest.wandb_project,
+        "tensorboard_paths": manifest.tensorboard_paths,
+        "tensorboard_python": manifest.tensorboard_python,
     }

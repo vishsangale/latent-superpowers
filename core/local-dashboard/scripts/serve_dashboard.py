@@ -7,6 +7,7 @@ import argparse
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import mimetypes
 from pathlib import Path
 import threading
@@ -77,10 +78,22 @@ class AppState:
             return self._state
 
 
+def _json_safe(value):
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def make_handler(app_state: AppState):
     class Handler(BaseHTTPRequestHandler):
         def _json(self, payload, status: int = 200):
-            encoded = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+            encoded = json.dumps(_json_safe(payload), indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(encoded)))

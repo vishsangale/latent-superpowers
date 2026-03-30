@@ -224,6 +224,64 @@ def test_dashboard_workspace_results_root(workspace_results_root: Path) -> None:
         process.wait(timeout=5)
 
 
+def test_dashboard_workspace_results_root_tensorboard(tensorboard_results_root: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INDEX_SCRIPT),
+            "--results-root",
+            str(tensorboard_results_root),
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "workspace"
+    assert payload["projects"][0]["name"] == "mendu"
+    assert payload["projects"][0]["sources"] == ["tensorboard"]
+    assert "Acc.test" in payload["projects"][0]["available_metrics"]
+
+    port = _pick_port()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(SERVER_SCRIPT),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--results-root",
+            str(tensorboard_results_root),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        _wait_for_server(port)
+        workspace = _get_json(port, "/api/workspace")
+        summary = _get_json(port, "/api/summary?project=mendu")
+        runs = _get_json(port, "/api/runs?project=mendu")
+        compare = _get_json(
+            port,
+            "/api/compare?project=mendu&metric=Acc.test&direction=max&variant_key=dataset",
+        )
+
+        assert workspace["projects"][0]["name"] == "mendu"
+        assert summary["run_count"] == 2
+        assert any(detail["source"] == "tensorboard" for detail in summary["source_details"])
+        assert runs["runs"][0]["source"] == "tensorboard"
+        nan_run = next(run for run in runs["runs"] if run["run_id"] == "tb_run_nan")
+        assert nan_run["metrics"]["Loss.train"] is None
+        assert runs["runs"][1]["metrics"]["Acc.test"] == 84.5
+        assert compare["rows"][0]["label"] == "dataset=fmnist"
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
 def test_dashboard_warns_on_non_loopback_host(ablation_store: Path) -> None:
     port = _pick_port()
     process = subprocess.Popen(
