@@ -1,0 +1,4 @@
+interface:
+  display_name: "Epistemic Rigor"
+  short_description: "Validate claims and handle uncertainty"
+  default_prompt: "Use $epistemic-rigor to verify citations, surface contradictions, and flag outdated claims."

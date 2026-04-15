@@ -1,0 +1,64 @@
+name: epistemic-rigor
+title: Epistemic Rigor
+summary: Validate claims, handle uncertainty gracefully, and avoid hallucinated citations by rigorously linking assertions to evidence.
+description: Use when the task involves presenting factual claims, citing research papers or SOTA benchmarks, resolving conflicting information, or making inferential leaps that carry epistemic uncertainty.
+codex:
+  display_name: Epistemic Rigor
+  short_description: Validate claims and handle uncertainty
+  default_prompt: Use $epistemic-rigor to verify citations, surface contradictions, and flag outdated claims.
+use_when:
+  - The user asks for factual claims, benchmarks, or citations in an ML/research context.
+  - The assistant is summarizing literature or synthesizing evidence from multiple sources.
+  - Conflicting claims exist in the project or external knowledge, requiring resolution or disclosure.
+avoid_when:
+  - Executing straightforward code commands where no factual claims are being presented.
+  - Doing purely formatting or linting tasks.
+principles:
+  - Claim-evidence binding — Every factual claim must link to a verifiable source or reproducible experiment. No unsupported assertions.
+  - Uncertainty disclosure — State confidence levels explicitly. Distinguish "established consensus," "emerging evidence," and "speculative inference."
+  - Contradiction surfacing — When sources conflict, present the disagreement rather than silently picking a side.
+  - Recency awareness — Flag when cited evidence may be outdated given how fast ML moves (e.g., SOTA benchmarks, scaling laws).
+  - Anti-hallucination checkpoint — Before presenting a citation, paper, or result, verify it exists. If unverifiable, say so.
+safety_rules:
+  - Never fabricate citations, URLs, or paper titles.
+  - Never present a speculated finding as established consensus.
+  - If a source cannot be located, explicitly disclaim that it is unverifiable.
+  - Do not pick sides in unresolved academic disputes; present the conflict objectively.
+expected_outputs:
+  - A claim accompanied by a verified citation or data reference.
+  - An uncertainty or confidence annotation (consensus vs emerging vs speculative).
+  - A warning if evidence relies on out-of-date information.
+  - A summary of opposing viewpoints when contradictions exist.
+commands:
+  - name: verify_citation.py
+    summary: Verifies if a given URL or arXiv ID exists to prevent hallucinated citations.
+  - name: evaluate_uncertainty.py
+    summary: Assists in evaluating the confidence level of a given claim.
+  - name: check_recency.py
+    summary: Flags if a cited date/benchmark is potentially outdated given recent SOTA changes.
+references:
+  - path: references/claim-binding.md
+    summary: Guidelines for binding factual claims to verifiable sources or experiments.
+  - path: references/uncertainty-disclosure.md
+    summary: Taxonomy of confidence levels and strategies for surfacing contradictions.
+  - path: references/hallucination-prevention.md
+    summary: Strict rules for the Anti-hallucination checkpoint and checking recency.
+workflows:
+  - name: Verify a citation and bind claim
+    helpers:
+      - verify_citation.py
+    steps:
+      - Isolate the factual claim being made.
+      - Identify the supporting source (paper, link, or dataset).
+      - Use verify_citation.py to confirm the URL or arXiv ID exists.
+      - Present the bound claim and source.
+  - name: Disclose uncertainty
+    helpers:
+      - evaluate_uncertainty.py
+    steps:
+      - Identify the confidence level of the information.
+      - Determine if it's consensus, emerging, or speculative.
+      - Highlight contradictions if multiple sources disagree.
+      - Clearly state the uncertainty to the user.
+generic_adapter_note: |
+  This adapter wraps the epistemic-rigor skill. Prefer using the provided CLI helpers to verify your claims and citations before drafting your responses.
