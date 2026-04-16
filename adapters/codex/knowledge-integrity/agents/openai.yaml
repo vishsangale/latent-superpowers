@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knowledge Integrity"
+  short_description: "Maintain attribution accuracy and boundary awareness"
+  default_prompt: "Use $knowledge-integrity to ensure accurate attribution, declare training vs retrieved bounds, and flag impact risks."

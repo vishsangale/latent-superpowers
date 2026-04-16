@@ -1,0 +1,60 @@
+name: knowledge-integrity
+title: Knowledge Integrity
+summary: Preserve the integrity of information by enforcing precise attribution, clarifying knowledge boundaries, and assessing cascading impacts.
+description: Use when the task involves explaining a concept, citing where an idea comes from, answering empirical or time-sensitive questions, or making recommendations that may impact downstream compute.
+codex:
+  display_name: Knowledge Integrity
+  short_description: Maintain attribution accuracy and boundary awareness
+  default_prompt: Use $knowledge-integrity to ensure accurate attribution, declare training vs retrieved bounds, and flag impact risks.
+use_when:
+  - The user asks about the origin or details of a specific architecture, algorithm, or theorem.
+  - The agent must synthesize information regarding a time-sensitive issue or recent SOTA development.
+  - Recommending architectures or benchmarking strategies that are expensive to run.
+avoid_when:
+  - Writing standard boilerplate code where no historical or academic claims are made.
+  - Tasks that only require experiment tracking (use experiment-runner instead).
+principles:
+  - Attribution precision — Credit the actual origin of an idea, not just the most popular paper. Distinguish "introduced by" from "popularized by."
+  - Know your boundary — Explicitly flag when reasoning from training knowledge vs. retrieved evidence vs. inference. Don't blur the lines.
+  - Search before synthesize — When the question is empirical or time-sensitive, retrieve first. Don't generate plausible-sounding answers from priors alone.
+  - No false authority — Don't present a paraphrased consensus that doesn't exist. If a field is fragmented or unsettled, say that.
+  - Downstream impact awareness — Flag when a claim, if wrong, could cascade into wasted compute, flawed architectures, or misleading benchmarks.
+safety_rules:
+  - Never hallucinate an original author if unsure; ask to retrieve evidence instead.
+  - Never recommend expensive baselines without a clear warning about compute cost.
+  - Always flag pre-training cutoff date gaps if relying purely on training data.
+expected_outputs:
+  - Attributions categorized explicitly as "introducer" vs "popularizer".
+  - Knowledge boundary tags on generated explanations (e.g., `[Training Prior]`).
+  - Clear warnings about compute and research latency risks.
+commands:
+  - name: check_attribution.py
+    summary: An interactive checklist helping the agent trace an idea back to its origin.
+  - name: boundary_flag.py
+    summary: Tool to annotate an explanation with its source boundary type.
+  - name: impact_assessment.py
+    summary: Assessment wizard measuring the downstream risk of a flawed recommendation.
+references:
+  - path: references/attribution-precision.md
+    summary: Guidelines for precision in author and paper attribution.
+  - path: references/knowledge-boundaries.md
+    summary: Tagging rules for Training Data, Retrieved Evidence, and Inference.
+  - path: references/downstream-impact.md
+    summary: Categorization of cascading risks (Wasted Compute, Misleading Benchmarks).
+workflows:
+  - name: State a historical ML fact
+    helpers:
+      - check_attribution.py
+      - boundary_flag.py
+    steps:
+      - Isolate the fact.
+      - Apply a boundary flag indicating if this is from prior training or retrieved just now.
+      - Specify the exact origin vs popularizer.
+  - name: Recommend a costly benchmark or architecture
+    helpers:
+      - impact_assessment.py
+    steps:
+      - Perform an impact check.
+      - Highlight compute, memory, and time cascading effects if the recommendation is suboptimal.
+generic_adapter_note: |
+  This adapter wraps the knowledge-integrity skill. Prioritize clear reasoning bounds and precise attribution above all.

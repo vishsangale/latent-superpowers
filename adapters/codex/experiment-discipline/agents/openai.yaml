@@ -1,0 +1,4 @@
+interface:
+  display_name: "Experiment Discipline"
+  short_description: "Enforce rigorous experiment methodologies"
+  default_prompt: "Use $experiment-discipline to ensure eval-first design, correct ablations, and reproducibility."
