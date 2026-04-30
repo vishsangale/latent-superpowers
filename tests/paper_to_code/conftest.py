@@ -66,3 +66,16 @@ metrics:
         encoding="utf-8",
     )
     return repo
+
+
+@pytest.fixture()
+def paper_repo_with_venv(paper_repo: Path) -> Path:
+    """Same repo but with a .venv directory full of matching content."""
+    venv_site = paper_repo / ".venv" / "lib" / "python3.12" / "site-packages" / "somelib-1.0.dist-info"
+    venv_site.mkdir(parents=True)
+    (venv_site / "METADATA").write_text(
+        # Repeat all the paper terms so this file would win without venv exclusion.
+        "model encoder objective reward train evaluation baseline ndcg ctr slate ranking neural\n" * 50,
+        encoding="utf-8",
+    )
+    return paper_repo

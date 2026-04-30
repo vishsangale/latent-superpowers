@@ -55,23 +55,19 @@ def extract_sections(text: str) -> dict[str, list[str]]:
 def extract_key_terms(text: str) -> list[str]:
     candidates = re.findall(r"\b[A-Za-z][A-Za-z0-9_-]{3,}\b", text)
     stopwords = {
-        "this",
-        "that",
-        "with",
-        "from",
-        "into",
-        "using",
-        "their",
-        "they",
-        "then",
-        "than",
-        "which",
-        "where",
-        "when",
-        "baseline",
-        "training",
-        "evaluation",
-        "method",
+        # English function words
+        "this", "that", "with", "from", "into", "using", "their", "they",
+        "then", "than", "which", "where", "when", "also", "each", "over",
+        "have", "does", "note", "both", "only", "such", "more", "some",
+        "other", "these", "those", "about", "after", "before", "between",
+        "during", "without", "within", "across", "through",
+        # Generic ML/paper words that appear in every codebase and paper
+        "paper", "model", "method", "baseline", "training", "evaluation",
+        "learning", "test", "time", "result", "approach", "work", "section",
+        "table", "figure", "equation", "experiment", "implementation",
+        "architecture", "network", "module", "layer", "output", "input",
+        "function", "parameter", "value", "compute", "follow", "show",
+        "perform", "provide", "include", "contain", "require", "define",
     }
     ordered: list[str] = []
     for item in candidates:
@@ -118,13 +114,20 @@ def load_plan(path: str) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+_IGNORED_DIR_PARTS = {
+    ".git", "__pycache__", ".venv", "venv", "node_modules",
+    ".tox", ".mypy_cache", ".ruff_cache", "site-packages",
+    "dist-info", "egg-info", ".eggs",
+}
+
+
 def search_repo(repo_path: str, key_terms: list[str]) -> list[dict[str, Any]]:
     root = Path(repo_path).resolve()
     matches: list[dict[str, Any]] = []
     for file_path in root.rglob("*"):
         if not file_path.is_file():
             continue
-        if ".git" in file_path.parts or "__pycache__" in file_path.parts:
+        if any(part in _IGNORED_DIR_PARTS for part in file_path.parts):
             continue
         if file_path.stat().st_size > 200_000:
             continue
@@ -169,32 +172,72 @@ def repo_gap_map(plan: dict[str, Any], repo_path: str) -> dict[str, Any]:
 
 
 def staged_plan(plan: dict[str, Any], gap_map: dict[str, Any]) -> dict[str, Any]:
+    missing = gap_map.get("missing_components", [])
+    top_files = [m["path"] for m in gap_map.get("top_matches", [])[:5]]
+
+    # Stage 1 always: configs and interfaces
     stages = [
         {
             "stage": "Define interfaces and configs",
             "focus": ["model", "training", "reproducibility"],
             "goal": "Create the config and integration surface before large code changes.",
-        },
-        {
-            "stage": "Implement method core",
-            "focus": ["model", "objective", "data"],
-            "goal": "Add the method-specific modules and training logic.",
-        },
-        {
-            "stage": "Wire evaluation and baselines",
-            "focus": ["evaluation"],
-            "goal": "Ensure the method can be compared against baselines and ablations.",
-        },
-        {
-            "stage": "Validate and iterate",
-            "focus": ["reproducibility", "evaluation"],
-            "goal": "Run smoke tests, baseline checks, and ablations before broader experiments.",
+            "missing_components": [],
+            "candidate_files": top_files,
         },
     ]
+
+    # Stage 2: implement missing core components (model + objective + data)
+    core_missing = [c for c in missing if c in ("model", "objective", "data")]
+    core_goal = "Add the method-specific modules and training logic."
+    if core_missing:
+        core_goal = (
+            f"Implement missing components: {', '.join(core_missing)}. "
+            + core_goal
+        )
+    stages.append({
+        "stage": "Implement method core",
+        "focus": ["model", "objective", "data"],
+        "goal": core_goal,
+        "missing_components": core_missing,
+        "candidate_files": top_files,
+    })
+
+    # Stage 3: evaluation — flag if missing
+    eval_missing = [c for c in missing if c in ("evaluation",)]
+    eval_goal = "Ensure the method can be compared against baselines and ablations."
+    if eval_missing:
+        eval_goal = (
+            "Evaluation infrastructure is missing — create eval fixtures before running experiments. "
+            + eval_goal
+        )
+    stages.append({
+        "stage": "Wire evaluation and baselines",
+        "focus": ["evaluation"],
+        "goal": eval_goal,
+        "missing_components": eval_missing,
+        "candidate_files": top_files,
+    })
+
+    # Stage 4: reproducibility — flag if missing
+    repro_missing = [c for c in missing if c in ("reproducibility",)]
+    repro_goal = "Run smoke tests, baseline checks, and ablations before broader experiments."
+    if repro_missing:
+        repro_goal = (
+            "Reproducibility config is missing — add seed, checkpoint, and config fixtures. "
+            + repro_goal
+        )
+    stages.append({
+        "stage": "Validate and iterate",
+        "focus": ["reproducibility", "evaluation"],
+        "goal": repro_goal,
+        "missing_components": repro_missing,
+        "candidate_files": top_files,
+    })
+
     return {
         "title": plan["title"],
         "missing_details": plan["missing_details"],
-        "missing_components": gap_map["missing_components"],
+        "missing_components": missing,
         "stages": stages,
         "top_repo_matches": gap_map["top_matches"][:10],
     }
