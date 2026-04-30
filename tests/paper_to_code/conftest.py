@@ -69,6 +69,31 @@ metrics:
 
 
 @pytest.fixture()
+def ml_architecture_summary(tmp_path: Path) -> Path:
+    """A paper summary that describes an architecture using MLP/projection/attention language
+    without ever using the words 'model', 'architecture', 'encoder', 'decoder', or 'network'."""
+    path = tmp_path / "ml-arch-summary.md"
+    path.write_text(
+        """
+# Fast Weight Memory
+
+The memory is a small MLP with fast weights W1 and W2 as the hidden layer projections.
+Key and value projection matrices W_K and W_V transform input tokens into the associative space.
+The attention mechanism reads from the hidden memory state using a learned query projection.
+A linear layer maps each token to its corresponding momentum, learning rate, and forgetting scalars.
+The inner gradient is computed via torch.func.grad applied to a pure function over weight tensors.
+Projection weights are outer-loop parameters trained via the language modelling objective.
+The hidden size of the MLP is set to 64 by default.
+MAC concatenates memory tokens as a prefix so attention can attend to them directly.
+The output gate multiplies the attention result elementwise with a second read from the MLP.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.fixture()
 def paper_repo_with_venv(paper_repo: Path) -> Path:
     """Same repo but with a .venv directory full of matching content."""
     venv_site = paper_repo / ".venv" / "lib" / "python3.12" / "site-packages" / "somelib-1.0.dist-info"

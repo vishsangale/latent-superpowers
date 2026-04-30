@@ -12,7 +12,20 @@ from typing import Any
 
 
 SECTION_PATTERNS = {
-    "model": [r"\bmodel\b", r"\barchitecture\b", r"\bencoder\b", r"\bdecoder\b", r"\bnetwork\b"],
+    "model": [
+        r"\bmodel\b", r"\barchitecture\b", r"\bencoder\b", r"\bdecoder\b", r"\bnetwork\b",
+        # MLP and weight structures
+        r"\bMLP\b", r"\bhidden\b", r"\bprojection\b", r"\blinear\s+layer\b", r"\bweight\s+matrix\b",
+        r"\bfast\s+weight", r"\bW_[A-Z]", r"\bW[12]\b",
+        # Attention and memory read/write
+        r"\battention\b", r"\bquery\b", r"\bkey\b", r"\bvalue\b", r"\bread\b.*\bmemory\b",
+        # Module and layer structure
+        r"\bmodule\b", r"\blayers?\b.*\bhidden\b", r"\bhidden.*\bsize\b",
+        # Gradient computation as architecture detail
+        r"\btorch\.func\b", r"\bfunctional_call\b", r"\bvmap\b",
+        # Output and gating
+        r"\boutput\s+gate\b", r"\belementwise\b", r"\bgate\b.*\battention\b",
+    ],
     "objective": [r"\bloss\b", r"\bobjective\b", r"\breward\b", r"\boptimi[sz]e\b"],
     "data": [r"\bdataset\b", r"\bdata\b", r"\bpreprocess", r"\bfeature\b", r"\bcontext\b"],
     "training": [r"\btrain", r"\boptimization\b", r"\bschedule\b", r"\bepoch\b", r"\bbatch\b"],

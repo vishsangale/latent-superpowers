@@ -48,6 +48,24 @@ def test_extract_method_plan(paper_summary: Path) -> None:
     assert payload["sections"]["evaluation"]
 
 
+def test_model_section_captures_mlp_projection_attention_language(ml_architecture_summary: Path) -> None:
+    """Model section must capture sentences about MLP, projections, attention, hidden size,
+    and linear layers even when words like 'model'/'architecture'/'encoder' are absent."""
+    result = subprocess.run(
+        [sys.executable, str(EXTRACT), str(ml_architecture_summary), "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    model_sentences = payload["sections"]["model"]
+    assert len(model_sentences) >= 5, (
+        f"Model section only captured {len(model_sentences)} sentences. "
+        f"Expected >= 5 sentences about MLP, projection, attention, hidden, linear.\n"
+        f"Got: {model_sentences}"
+    )
+
+
 def test_venv_excluded_from_repo_search(paper_summary: Path, paper_repo_with_venv: Path) -> None:
     """Top repo matches must not include .venv/ paths even when they contain more matches."""
     result = subprocess.run(
