@@ -1,6 +1,6 @@
 ---
 name: slurm-cluster
-description: "Purpose"
+description: Use when the task involves planning Slurm execution for a repo, generating sbatch scripts or job arrays, or diagnosing Slurm job output and accounting data.
 ---
 
 # Slurm Cluster for OpenCode

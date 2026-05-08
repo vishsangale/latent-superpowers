@@ -1,6 +1,6 @@
 ---
 name: local-dashboard
-description: "Purpose"
+description: Use when the task involves browsing local runs in a browser, comparing local MLflow and W&B data, previewing artifacts, refreshing local state, or giving a single-user local dashboard over experiment results without requiring hosted services or API keys.
 ---
 
 # Local Dashboard for OpenCode

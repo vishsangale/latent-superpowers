@@ -19,7 +19,7 @@ CODEX_ADAPTERS_DIR = ADAPTERS_DIR / "codex"
 GENERIC_ADAPTERS = {
     "claude-code": "CLAUDE.md",
     "gemini": "GEMINI.md",
-    "opencode": "OPENCODE.md",
+    "opencode": "SKILL.md",
 }
 
 
@@ -111,6 +111,18 @@ def validate_generic_adapter(adapter_name: str, skill_name: str) -> None:
         fail(f"Missing generated {adapter_name} adapter: {path}")
 
     content = path.read_text(encoding="utf-8")
+
+    if adapter_name == "opencode":
+        if not content.startswith("---\n"):
+            fail(f"Opencode adapter missing frontmatter: {path}")
+        parts = content.split("---\n", 2)
+        if len(parts) < 3:
+            fail(f"Opencode adapter frontmatter is malformed: {path}")
+        frontmatter = yaml.safe_load(parts[1]) or {}
+        for key in ("name", "description"):
+            if not frontmatter.get(key):
+                fail(f"Opencode adapter frontmatter missing '{key}': {path}")
+
     required_sections = [
         "## Purpose",
         "## Use When",

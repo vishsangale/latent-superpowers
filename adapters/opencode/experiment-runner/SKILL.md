@@ -1,6 +1,6 @@
 ---
 name: experiment-runner
-description: "Purpose"
+description: Use when the task involves planning multiple experiment commands, running seeded sweeps, resuming failed local runs, or summarizing which commands succeeded, failed, or need to be rerun.
 ---
 
 # Experiment Runner for OpenCode

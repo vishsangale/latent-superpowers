@@ -1,6 +1,6 @@
 ---
 name: wandb
-description: "Purpose"
+description: Use when the task involves W&B projects, runs, groups, sweeps, configs, metrics, artifacts, offline sync issues, self-hosted server configuration, or selecting the best run under explicit evaluation criteria.
 ---
 
 # Weights & Biases for OpenCode

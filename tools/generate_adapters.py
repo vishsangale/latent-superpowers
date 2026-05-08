@@ -132,7 +132,15 @@ def generate_generic_prompt(spec: dict[str, Any], adapter_name: str, core_skill_
         "gemini": "Gemini",
         "opencode": "OpenCode",
     }[adapter_name]
-    return f"""# {spec['title']} for {adapter_title}
+    frontmatter = ""
+    if adapter_name == "opencode":
+        frontmatter = (
+            "---\n"
+            f"name: {spec['name']}\n"
+            f"description: {spec['description']}\n"
+            "---\n\n"
+        )
+    return f"""{frontmatter}# {spec['title']} for {adapter_title}
 
 Generated from `core/{spec['name']}/skill-spec.yaml`.
 
@@ -201,7 +209,7 @@ def generate_skill(spec_path: Path) -> list[Path]:
     generic_targets = {
         "claude-code": "CLAUDE.md",
         "gemini": "GEMINI.md",
-        "opencode": "OPENCODE.md",
+        "opencode": "SKILL.md",
     }
     for adapter_name, filename in generic_targets.items():
         adapter_dir = ADAPTERS_DIR / adapter_name / skill_name

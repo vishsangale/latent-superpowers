@@ -1,6 +1,6 @@
 ---
 name: hydra
-description: "Purpose"
+description: Use when a repo uses Hydra or OmegaConf and the task involves config groups, defaults lists, overrides, multirun planning, launcher setup, reproducibility, onboarding, scaffolding, or recovering the effective config that produced a run.
 ---
 
 # Hydra for OpenCode

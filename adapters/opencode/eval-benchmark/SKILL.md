@@ -1,6 +1,6 @@
 ---
 name: eval-benchmark
-description: "Purpose"
+description: Use when the task involves benchmarking local experiment runs, ranking models or configurations by explicit metrics, comparing candidate runs against a baseline, or inspecting evaluation histories and artifacts.
 ---
 
 # Eval Benchmark for OpenCode

@@ -1,6 +1,6 @@
 ---
 name: mlflow
-description: "Purpose"
+description: Use when the task involves MLflow experiments, runs, metrics, params, artifacts, tracking URIs, or selecting the best run under explicit evaluation criteria.
 ---
 
 # MLflow for OpenCode

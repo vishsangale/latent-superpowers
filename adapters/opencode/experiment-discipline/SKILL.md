@@ -1,6 +1,6 @@
 ---
 name: experiment-discipline
-description: "Purpose"
+description: Use when the task involves designing an experiment, deciding what metrics to track, setting up logging, selecting baselines, analyzing ablations, or reporting negative results.
 ---
 
 # Experiment Discipline for OpenCode

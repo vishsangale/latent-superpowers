@@ -1,6 +1,6 @@
 ---
 name: ablation-analysis
-description: "Purpose"
+description: Use when the task involves comparing experimental variants, ranking runs by a metric, identifying which config factors moved results, generating local plots or tables, or producing concise researcher-facing ablation summaries from MLflow or W&B data.
 ---
 
 # Ablation Analysis for OpenCode

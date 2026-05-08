@@ -1,6 +1,6 @@
 ---
 name: dataset-pipeline
-description: "Purpose"
+description: Use when the task involves onboarding dataset code in a repo, profiling local datasets, validating train/val/test splits, surfacing missing data dependencies, or snapshotting dataset state for reproducibility.
 ---
 
 # Dataset Pipeline for OpenCode

@@ -1,6 +1,6 @@
 ---
 name: reproducibility
-description: "Purpose"
+description: Use when the task involves freezing local experiment context, checking whether a repo or environment drifted, reconstructing a tracked run from MLflow or W&B data, or diffing reproducibility snapshots.
 ---
 
 # Reproducibility for OpenCode

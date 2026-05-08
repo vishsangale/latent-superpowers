@@ -1,6 +1,6 @@
 ---
 name: paper-to-code
-description: "Purpose"
+description: Use when the task involves translating a paper, method summary, or research note into an implementation plan, identifying which parts already exist in a repo, enumerating missing components, or defining the evaluation work needed to validate the method.
 ---
 
 # Paper To Code for OpenCode

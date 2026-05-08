@@ -1,6 +1,6 @@
 ---
 name: knowledge-integrity
-description: "Purpose"
+description: Use when the task involves explaining a concept, citing where an idea comes from, answering empirical or time-sensitive questions, or making recommendations that may impact downstream compute.
 ---
 
 # Knowledge Integrity for OpenCode

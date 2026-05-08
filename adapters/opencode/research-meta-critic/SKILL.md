@@ -1,8 +1,7 @@
 ---
 name: research-meta-critic
-description: "ML research skill for research-meta-critic"
+description: Act as an expert AI agent orchestrator and optimizer that reviews full execution traces and recommends concrete, actionable edits to the other agents' SKILL.md files.
 ---
-
 
 # Research Meta-Critic for OpenCode
 

@@ -1,8 +1,7 @@
 ---
 name: research-theoretician
-description: "ML research skill for research-theoretician"
+description: Act as a principal investigator who takes a summary of the current scientific frontier and generates novel, theoretically sound, and testable research hypotheses.
 ---
-
 
 # Research Theoretician for OpenCode
 
@@ -10,45 +9,51 @@ Generated from `core/research-theoretician/skill-spec.yaml`.
 
 ## Purpose
 
-Act as a principal investigator who takes a summary of the current scientific frontier and generates novel, theoretically sound, and testable research hypotheses.
+Generates novel, theoretically sound, and testable research hypotheses.
+
+
 
 ## Use When
 
-- The user needs novel, testable research hypotheses based on a literature review.
-- The task is to formulate architectural changes, novel loss formulations, or new optimization techniques.
-- A `scholar_memo.md` needs to be converted into actionable experimental methodology.
+- The Scholar has provided a frontier summary.
+- A novel hypothesis needs to be formulated.
 
 ## Avoid When
 
-- Gathering literature (belongs to the Scholar).
-- Implementing experiments (belongs to the Engineer).
-- Evaluating results (belongs to the Critic).
+- Writing implementation code.
+- Running experiments.
 
 ## Working Rules
 
-- Read the `scholar_memo.md` to ground yourself in the current state of the art.
-- Formulate 1-3 distinct, testable hypotheses that address the identified whitespace.
-- Structure each hypothesis as a clear architectural change, novel loss formulation, or new optimization technique.
-- For the selected optimal hypothesis, outline the required experimental methodology to test it.
-- Describe *what* needs to be built, not *how* to type specific Python syntax.
+- Read scholar_memo.md to ground yourself.
+- Formulate 1-3 testable hypotheses.
+- Provide formal mathematical definitions or abstract algorithmic pseudocode.
+- Define baseline framework and metric to beat.
 
 ## Safety Rules
 
-- Ensure hypotheses are actionable; the Engineer must be able to code them.
-- Prioritize novelty; do not propose incremental tuning unless central to a broader theoretical claim.
-- Stay coding-agent agnostic: the Engineer could be any coding model.
-- Validate theoretical justification is mathematically or structurally sound.
+- Ensure hypothesis is actionable and executable within a single node.
+- Do not propose incremental tuning.
+- Do not duplicate work already in scholar_memo.md.
 
 ## Shared Core
 
 - Skill root: `../../../core/research-theoretician`
+- Scripts: `../../../core/research-theoretician/scripts`
 - References: `../../../core/research-theoretician/references`
+
+## Command Surface
+
+
+
+## Workflows
+
+
+
+## References
+
+
 
 ## Expected Outputs
 
-You must produce a `hypothesis_memo.md` which includes:
-
-1. **The Core Hypothesis:** A 1-2 sentence statement of what we are testing and why it should work.
-2. **Theoretical Justification:** Why this approach is structurally or mathematically sound.
-3. **Proposed Methodology:** What specific modifications need to be made to a standard baseline (e.g., "replace standard LayerNorm with RMSNorm", "add a KL penalty term to the PPO objective").
-4. **Expected Metrics:** What empirical result would prove or disprove the hypothesis?
+- A hypothesis_memo.md containing Core Hypothesis, Theoretical Justification, Proposed Methodology, and Expected Metrics.

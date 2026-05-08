@@ -1,6 +1,6 @@
 ---
 name: epistemic-rigor
-description: "Purpose"
+description: Use when the task involves presenting factual claims, citing research papers or SOTA benchmarks, resolving conflicting information, or making inferential leaps that carry epistemic uncertainty.
 ---
 
 # Epistemic Rigor for OpenCode

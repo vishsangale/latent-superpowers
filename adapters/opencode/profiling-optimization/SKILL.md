@@ -1,6 +1,6 @@
 ---
 name: profiling-optimization
-description: "Purpose"
+description: Use when the task involves slow training loops, peak memory issues, throughput bottlenecks, dataloader stalls, GPU utilization questions, command-level profiling, or summarizing Torch profiler traces for optimization work.
 ---
 
 # Profiling Optimization for OpenCode
