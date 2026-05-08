@@ -1,3 +1,8 @@
+---
+name: eval-benchmark
+description: "Purpose"
+---
+
 # Eval Benchmark for OpenCode
 
 Generated from `core/eval-benchmark/skill-spec.yaml`.

@@ -1,3 +1,8 @@
+---
+name: hydra
+description: "Purpose"
+---
+
 # Hydra for OpenCode
 
 Generated from `core/hydra/skill-spec.yaml`.

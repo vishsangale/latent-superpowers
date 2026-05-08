@@ -1,3 +1,8 @@
+---
+name: local-dashboard
+description: "Purpose"
+---
+
 # Local Dashboard for OpenCode
 
 Generated from `core/local-dashboard/skill-spec.yaml`.

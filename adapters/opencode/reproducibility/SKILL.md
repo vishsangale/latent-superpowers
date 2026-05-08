@@ -1,3 +1,8 @@
+---
+name: reproducibility
+description: "Purpose"
+---
+
 # Reproducibility for OpenCode
 
 Generated from `core/reproducibility/skill-spec.yaml`.

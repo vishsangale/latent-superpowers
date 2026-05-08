@@ -1,3 +1,8 @@
+---
+name: slurm-cluster
+description: "Purpose"
+---
+
 # Slurm Cluster for OpenCode
 
 Generated from `core/slurm-cluster/skill-spec.yaml`.

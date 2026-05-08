@@ -1,3 +1,8 @@
+---
+name: epistemic-rigor
+description: "Purpose"
+---
+
 # Epistemic Rigor for OpenCode
 
 Generated from `core/epistemic-rigor/skill-spec.yaml`.

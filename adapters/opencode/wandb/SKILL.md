@@ -1,3 +1,8 @@
+---
+name: wandb
+description: "Purpose"
+---
+
 # Weights & Biases for OpenCode
 
 Generated from `core/wandb/skill-spec.yaml`.

@@ -1,3 +1,8 @@
+---
+name: experiment-runner
+description: "Purpose"
+---
+
 # Experiment Runner for OpenCode
 
 Generated from `core/experiment-runner/skill-spec.yaml`.

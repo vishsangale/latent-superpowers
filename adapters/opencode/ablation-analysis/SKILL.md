@@ -1,3 +1,8 @@
+---
+name: ablation-analysis
+description: "Purpose"
+---
+
 # Ablation Analysis for OpenCode
 
 Generated from `core/ablation-analysis/skill-spec.yaml`.

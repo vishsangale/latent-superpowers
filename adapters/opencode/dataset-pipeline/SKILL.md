@@ -1,3 +1,8 @@
+---
+name: dataset-pipeline
+description: "Purpose"
+---
+
 # Dataset Pipeline for OpenCode
 
 Generated from `core/dataset-pipeline/skill-spec.yaml`.

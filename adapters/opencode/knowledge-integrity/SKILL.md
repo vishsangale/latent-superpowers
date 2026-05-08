@@ -1,3 +1,8 @@
+---
+name: knowledge-integrity
+description: "Purpose"
+---
+
 # Knowledge Integrity for OpenCode
 
 Generated from `core/knowledge-integrity/skill-spec.yaml`.

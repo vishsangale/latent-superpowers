@@ -1,3 +1,8 @@
+---
+name: experiment-discipline
+description: "Purpose"
+---
+
 # Experiment Discipline for OpenCode
 
 Generated from `core/experiment-discipline/skill-spec.yaml`.

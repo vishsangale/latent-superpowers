@@ -1,3 +1,8 @@
+---
+name: paper-to-code
+description: "Purpose"
+---
+
 # Paper To Code for OpenCode
 
 Generated from `core/paper-to-code/skill-spec.yaml`.

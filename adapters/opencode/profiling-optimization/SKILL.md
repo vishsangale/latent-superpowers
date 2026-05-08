@@ -1,3 +1,8 @@
+---
+name: profiling-optimization
+description: "Purpose"
+---
+
 # Profiling Optimization for OpenCode
 
 Generated from `core/profiling-optimization/skill-spec.yaml`.

@@ -1,3 +1,8 @@
+---
+name: mlflow
+description: "Purpose"
+---
+
 # MLflow for OpenCode
 
 Generated from `core/mlflow/skill-spec.yaml`.
