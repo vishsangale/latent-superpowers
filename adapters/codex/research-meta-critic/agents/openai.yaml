@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Meta-Critic"
+  short_description: "Analyzes research run traces and proposes prompt improvements for other agents."
+  default_prompt: "Use $research-meta-critic to execute the role."

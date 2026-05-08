@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Engineer"
+  short_description: "Translates a theoretical hypothesis into a robust, executable experiment workspace."
+  default_prompt: "Use $research-engineer to execute the role."

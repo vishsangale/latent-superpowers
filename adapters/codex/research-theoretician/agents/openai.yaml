@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Theoretician"
+  short_description: "Generates novel, theoretically sound, and testable research hypotheses."
+  default_prompt: "Use $research-theoretician to execute the role."

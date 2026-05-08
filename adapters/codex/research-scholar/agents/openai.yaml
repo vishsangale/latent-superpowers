@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Scholar"
+  short_description: "Construct a comprehensive frontier summary for a given research domain."
+  default_prompt: "Use $research-scholar to execute the role."

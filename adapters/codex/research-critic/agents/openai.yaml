@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Critic"
+  short_description: "Evaluates empirical results and drafts scientific output."
+  default_prompt: "Use $research-critic to execute the role."
