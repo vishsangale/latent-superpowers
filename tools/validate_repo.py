@@ -45,8 +45,15 @@ def run(
     return completed
 
 
+SKIP_DIR_PARTS = {"__pycache__", ".venv", "venv", ".git", "node_modules"}
+
+
 def python_files() -> list[str]:
-    return sorted(str(path) for path in ROOT.rglob("*.py") if "__pycache__" not in path.parts)
+    return sorted(
+        str(path)
+        for path in ROOT.rglob("*.py")
+        if not (SKIP_DIR_PARTS & set(path.parts))
+    )
 
 
 def skill_specs() -> list[Path]:
