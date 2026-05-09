@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arxiver Add Adapter"
+  short_description: "Wrap a new benchmark in the v2 verifier"
+  default_prompt: "Use $arxiver-add-adapter to scaffold a new benchmark adapter, register a versioned baseline, and stage its dataset."
