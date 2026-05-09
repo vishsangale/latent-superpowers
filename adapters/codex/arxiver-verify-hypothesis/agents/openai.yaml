@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arxiver Verify Hypothesis"
+  short_description: "Run and interpret v2 verifier reports"
+  default_prompt: "Use $arxiver-verify-hypothesis to author the hypothesis code, call v2_verify, and interpret the paired-bootstrap report honestly."
