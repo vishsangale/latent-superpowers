@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arxiver Bringup"
+  short_description: "Set up arxiver substrate end-to-end"
+  default_prompt: "Use $arxiver-bringup to drive substrate_status, build_image, prepare_datasets, and smoke_test until the v2 verifier is green."
