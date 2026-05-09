@@ -1,0 +1,57 @@
+name: arxiver-bringup
+title: Arxiver Bringup
+summary: Walk a fresh machine through arxiver substrate setup until v2_smoke_test reports green.
+description: Use when the arxiver verifier substrate is not running, when v2_substrate_status reports not_ready, or when an agent is on a fresh machine and needs the sandbox image / datasets / cache prepared before running any hypothesis.
+codex:
+  display_name: Arxiver Bringup
+  short_description: Set up arxiver substrate end-to-end
+  default_prompt: Use $arxiver-bringup to drive substrate_status, build_image, prepare_datasets, and smoke_test until the v2 verifier is green.
+use_when:
+  - User says "set up arxiver" / "first time on this machine" / "Phase 0 not running".
+  - v2_substrate_status returned docker_ok=false or image_digest=null.
+  - v2_verify failed with a runner/image error suggesting infra (not hypothesis) is broken.
+  - User asks why a smoke run is failing and wants the canonical setup checklist.
+avoid_when:
+  - Setup is green and the user wants to author or run a hypothesis (use arxiver-verify-hypothesis).
+  - Diagnosing an unrelated container/network failure not specific to arxiver's image.
+principles:
+  - Substrate is built lazily — never run hypotheses until v2_smoke_test passes end-to-end.
+  - Drive the substrate through MCP tools (v2_substrate_status, v2_build_image, v2_smoke_test). Do not shell out to docker directly.
+  - CIFAR-10 dataset must be staged into ~/.arxiver/datasets/cifar10/ before any cifar10 hypothesis. Use scripts/v2_prepare_datasets.py from the arxiver repo.
+  - A failing smoke is a substrate bug; do not retry blindly. Inspect verdict and stdout_tail.
+safety_rules:
+  - Never run "docker build" or "docker run" by hand — always go through v2_build_image.
+  - Never declare bringup complete without v2_smoke_test reporting passed=true.
+  - Never edit the sandbox image Dockerfile and skip rebuilding (cache key would mismatch silently).
+expected_outputs:
+  - A green v2_substrate_status (docker_ok, image_digest, datasets_present).
+  - A passing v2_smoke_test (all 6 fixtures, duration < 90s).
+  - Clear escalation when any step fails (which step, what stdout_tail showed).
+commands:
+  - name: check_substrate.py
+    summary: Prints the bringup checklist with the exact MCP-tool sequence and what "green" looks like for each step.
+references:
+  - path: references/workflow.md
+    summary: End-to-end bringup walkthrough — substrate_status to build_image(cpu) to prepare_datasets to smoke_test.
+  - path: references/troubleshooting.md
+    summary: Common failures (docker not running, image build OOM, dataset missing, smoke verdict=error) with diagnosis steps.
+workflows:
+  - name: Set up substrate on a fresh machine
+    helpers:
+      - check_substrate.py
+    steps:
+      - Call v2_substrate_status; record docker_ok, image_digest, datasets_present.
+      - If docker_ok=false, instruct user to start Docker daemon and stop.
+      - If image_digest is null, call v2_build_image(variant=cpu).
+      - If cifar10 dataset missing, run python scripts/v2_prepare_datasets.py from the arxiver repo.
+      - Call v2_smoke_test; assert passed=true. Otherwise inspect failures and escalate.
+  - name: Recover from a failing smoke
+    helpers:
+      - check_substrate.py
+    steps:
+      - Inspect SmokeResult.failures — each names a fixture and verdict.
+      - For verdict=error, read stdout_tail of the offending fixture's outcomes.
+      - For runner errors, re-run v2_substrate_status to verify image still exists.
+      - Do not retry the smoke until the named fixture's failure mode is identified.
+generic_adapter_note: |
+  This skill is an entry point — invoke at the start of any session where the arxiver substrate state is unknown. Most other arxiver skills assume bringup already passed.

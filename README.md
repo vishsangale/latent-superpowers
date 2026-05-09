@@ -22,6 +22,9 @@ Shared agent skills with a portable core and generated adapters for multiple cod
 - `dataset-pipeline`
 - `reproducibility`
 - `slurm-cluster`
+- `arxiver-bringup`
+- `arxiver-verify-hypothesis`
+- `arxiver-add-adapter`
 
 ## Typical Workflow
 
